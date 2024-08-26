@@ -1,0 +1,34 @@
+Total number of IJK combinations =: 120
+Num. of IJK with (Gi,Gj,Gk)=(0,0,0) =: 120
+    thread 0: first_ijk=0,  last_ijk=3
+    thread 1: first_ijk=4,  last_ijk=7
+    thread 2: first_ijk=8,  last_ijk=11
+    thread 3: first_ijk=12,  last_ijk=15
+    thread 4: first_ijk=16,  last_ijk=19
+    thread 5: first_ijk=20,  last_ijk=23
+    thread 6: first_ijk=24,  last_ijk=27
+    thread 7: first_ijk=28,  last_ijk=31
+    thread 8: first_ijk=32,  last_ijk=35
+    thread 9: first_ijk=36,  last_ijk=39
+    thread 10: first_ijk=40,  last_ijk=43
+    thread 11: first_ijk=44,  last_ijk=47
+    thread 12: first_ijk=48,  last_ijk=51
+    thread 13: first_ijk=52,  last_ijk=55
+    thread 14: first_ijk=56,  last_ijk=59
+    thread 15: first_ijk=60,  last_ijk=63
+    thread 16: first_ijk=64,  last_ijk=67
+    thread 17: first_ijk=68,  last_ijk=71
+    thread 18: first_ijk=72,  last_ijk=75
+    thread 19: first_ijk=76,  last_ijk=79
+    thread 20: first_ijk=80,  last_ijk=83
+    thread 21: first_ijk=84,  last_ijk=87
+    thread 22: first_ijk=88,  last_ijk=91
+    thread 23: first_ijk=92,  last_ijk=95
+    thread 24: first_ijk=96,  last_ijk=98
+    thread 25: first_ijk=99,  last_ijk=101
+    thread 26: first_ijk=102,  last_ijk=104
+    thread 27: first_ijk=105,  last_ijk=107
+    thread 28: first_ijk=108,  last_ijk=110
+    thread 29: first_ijk=111,  last_ijk=113
+    thread 30: first_ijk=114,  last_ijk=116
+    thread 31: first_ijk=117,  last_ijk=119

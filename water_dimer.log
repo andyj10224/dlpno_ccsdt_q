@@ -1,6 +1,42 @@
-2024-08-26:13:58:27,87 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'TRUE', 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'function_kwargs': {}}
-2024-08-26:13:58:27,89 INFO     [psi4.driver.driver:523] Compute energy(): method=cc3, basis=cc-pvdz, molecule=mol, nre=36.662847996863405
-2024-08-26:13:58:42,521 INFO     [psi4.driver.driver:526] Return energy(): -152.49359609552815
-2024-08-26:13:58:42,538 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'TRUE', 'SCF__INTS_TOLERANCE': 1e-12, 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'CCTRANSORT__WFN': 'CC3', 'function_kwargs': {}}
-2024-08-26:13:58:42,540 INFO     [psi4.driver.driver:523] Compute energy(): method=dlpno_ccsdt_q, basis=cc-pvdz, molecule=mol, nre=36.662847996863405
-2024-08-26:13:58:44,693 INFO     [psi4.driver.driver:526] Return energy(): -152.0624906468832
+2024-08-26:15:59:48,828 INFO     [psi4.driver.task_planner:237] PLANNING MB:  mc_level_idx=0 packet={'driver': 'energy', 'method': 'dlpno_ccsdt_q', 'basis': 'CC-PVDZ', 'keywords': {'CC_TYPE': 'CONV', 'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'TRUE', 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'function_kwargs': {}}}
+2024-08-26:15:59:48,828 INFO     [psi4.driver.driver_nbody:954] 
+  //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>//
+  // ManyBody Setup: N-Body Levels [1, 2]//
+  //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<//
+
+
+2024-08-26:15:59:48,828 INFO     [psi4.driver.driver_nbody:515]         Number of 1-body computations:     2
+        Number of 2-body computations:     1
+2024-08-26:15:59:48,829 INFO     [psi4.driver.driver_nbody:1016] 
+  //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>//
+  //       ManyBody Computations       //
+  //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<//
+
+
+2024-08-26:15:59:48,851 INFO     [psi4.driver.task_base:172] <<< JSON launch ... c1 9.178038940979068
+2024-08-26:15:59:49,303 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'CC_TYPE': 'CONV', 'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'TRUE', 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'function_kwargs': {}}
+2024-08-26:15:59:49,305 INFO     [psi4.driver.driver:523] Compute energy(): method=dlpno_ccsdt_q, basis=cc-pvdz, molecule=mol, nre=9.178038940979068
+2024-08-26:15:59:50,382 INFO     [psi4.driver.driver:526] Return energy(): -76.02969404922766
+2024-08-26:15:59:50,393 INFO     [psi4.driver.task_base:172] <<< JSON launch ... c1 9.163830181985562
+2024-08-26:15:59:50,414 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'CC_TYPE': 'CONV', 'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'TRUE', 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'function_kwargs': {}}
+2024-08-26:15:59:50,416 INFO     [psi4.driver.driver:523] Compute energy(): method=dlpno_ccsdt_q, basis=cc-pvdz, molecule=mol, nre=9.163830181985562
+2024-08-26:15:59:51,223 INFO     [psi4.driver.driver:526] Return energy(): -76.02693045930567
+2024-08-26:15:59:51,235 INFO     [psi4.driver.task_base:172] <<< JSON launch ... c1 36.662847996863405
+2024-08-26:15:59:51,255 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'CC_TYPE': 'CONV', 'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'TRUE', 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'function_kwargs': {}}
+2024-08-26:15:59:51,257 INFO     [psi4.driver.driver:523] Compute energy(): method=dlpno_ccsdt_q, basis=cc-pvdz, molecule=mol, nre=36.662847996863405
+2024-08-26:15:59:52,946 INFO     [psi4.driver.driver:526] Return energy(): -152.06249064688328
+2024-08-26:15:59:52,958 INFO     [psi4.driver.driver_nbody:1366] 
+  //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>//
+  //          ManyBody Results         //
+  //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<//
+
+
+2024-08-26:15:59:52,958 INFO     [psi4.driver.driver_nbody:396] 
+   ==> N-Body: Counterpoise Corrected (CP) energies <==
+
+        n-Body     Total Energy            Interaction Energy                          N-body Contribution to Interaction Energy
+                   [Eh]                    [Eh]                  [kcal/mol]            [Eh]                  [kcal/mol]
+             1  N/A                         0.000000000000        0.000000000000        0.000000000000        0.000000000000
+  FULL/RTN   2  N/A                        -0.005866138350       -3.681057389080       -0.005866138350       -3.681057389080
+
+

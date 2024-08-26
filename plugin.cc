@@ -1093,6 +1093,7 @@ void DLPNOCCSDT::lccsdt_iterations() {
             auto &[i, j] = ij_to_i_j_[ij];
             int ii = i_j_to_ij_[i][i], jj = i_j_to_ij_[j][j];
             int ij_idx = (i < j) ? ij : ij_to_ji_[ij];
+            if (i_j_to_ij_strong_[i][j] == -1) continue;
 
             auto tau = T_iajb_[ij]->clone();
             auto S_ij_ii = S_pno_ij_nn_[ij_idx][i];
@@ -1144,11 +1145,32 @@ double DLPNOCCSDT::compute_energy() {
     estimate_memory();
     compute_integrals();
     lccsdt_iterations();
-    // print_results();
 
-    double E_DLPNOCCSDT = e_lccsdt_;
+    double e_scf = reference_wavefunction_->energy();
+    double e_ccsdt_corr = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_lmp2_weak_ + de_disp_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+    double e_ccsdt_total = e_scf + e_ccsdt_corr;
 
-    return E_DLPNOCCSDT;
+    set_scalar_variable("CCSDT CORRELATION ENERGY", e_ccsdt_corr);
+    set_scalar_variable("CURRENT CORRELATION ENERGY", e_ccsdt_corr);
+    set_scalar_variable("CCSDT TOTAL ENERGY", e_ccsdt_total);
+    set_scalar_variable("CURRENT ENERGY", e_ccsdt_total);
+
+    print_results();
+
+    return e_ccsdt_total;
+}
+
+void DLPNOCCSDT::print_results() {
+    double e_total = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_lmp2_weak_ + de_disp_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+
+    outfile->Printf("  \n");
+    outfile->Printf("  Total DLPNO-CCSDT Correlation Energy: %16.12f \n", e_total);
+    outfile->Printf("    LCCSDT Correlation Energy:          %16.12f \n", e_lccsdt_);
+    outfile->Printf("    Full (T) - Iterative (T) Diff:      %16.12f \n", e_lccsd_t_ - e_lccsd_ - E_T_);
+    outfile->Printf("    Net non-strong pair contributions:  %16.12f \n", de_lmp2_weak_ + de_disp_weak_ + 
+                                                                            de_lmp2_eliminated_ + de_dipole_ + de_pno_total_);
+    outfile->Printf("    Andy Jiang... FOR THREEEEEEEEEEE!!!\n\n\n");
+    outfile->Printf("  @Total DLPNO-CCSDT Energy: %16.12f \n", variables_["SCF TOTAL ENERGY"] + e_total);
 }
 
 extern "C" PSI_API

@@ -21,6 +21,7 @@ symmetry c1
 set {
   scf_type df
   mp2_type df
+  cc_type conv
   basis cc-pvdz
   df_basis_mp2 cc-pvdz-ri
   pno_convergence tight
@@ -33,7 +34,6 @@ set dlpno_ccsdt_q {
   print 1
 }
 
-energy('cc3')
-energy('dlpno_ccsdt_q')
+energy('dlpno_ccsdt_q', bsse_type='cp')
 
 dlpno_ccsdt_q.exampleFN()
