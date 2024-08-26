@@ -1,0 +1,6 @@
+2024-08-26:13:58:27,87 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'TRUE', 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'function_kwargs': {}}
+2024-08-26:13:58:27,89 INFO     [psi4.driver.driver:523] Compute energy(): method=cc3, basis=cc-pvdz, molecule=mol, nre=36.662847996863405
+2024-08-26:13:58:42,521 INFO     [psi4.driver.driver:526] Return energy(): -152.49359609552815
+2024-08-26:13:58:42,538 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'TRUE', 'SCF__INTS_TOLERANCE': 1e-12, 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'CCTRANSORT__WFN': 'CC3', 'function_kwargs': {}}
+2024-08-26:13:58:42,540 INFO     [psi4.driver.driver:523] Compute energy(): method=dlpno_ccsdt_q, basis=cc-pvdz, molecule=mol, nre=36.662847996863405
+2024-08-26:13:58:44,693 INFO     [psi4.driver.driver:526] Return energy(): -152.0624906468832

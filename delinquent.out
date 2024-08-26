@@ -1,0 +1,43 @@
+Attention! This SCF may be density-fitted.
+Traceback (most recent call last):
+  File "/home/aj48384/github/psi4/objdir_p4sums/stage/bin/psi4", line 387, in <module>
+    exec(content)
+  File "<string>", line 56, in <module>
+  File "/home/aj48384/github/psi4/objdir_p4sums/stage/lib/psi4/driver/driver.py", line 525, in energy
+    wfn = procedures['energy'][lowername](lowername, molecule=molecule, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aj48384/github/dlpno_ccsdt_q/../dlpno_ccsdt_q/pymodule.py", line 67, in run_dlpno_ccsdt_q
+    dlpno_ccsdt_q_wfn = psi4.core.plugin('dlpno_ccsdt_q.so', ref_wfn)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+RuntimeError: 
+Fatal Error: Maximum DLPNO iterations exceeded.
+Error occurred in file: /home/aj48384/github/dlpno_ccsdt_q/plugin.cc on line: 1105
+The most recent 5 function calls were:
+
+psi::PsiException::PsiException(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, char const*, int)
+psi::dlpno::dlpno_ccsdt_q::DLPNOCCSDT::compute_energy()
+
+
+Printing out the relevant lines from the Psithon --> Python processed input file:
+    core.set_global_option("F_CUT_T", 0.0)
+    core.set_global_option("T_CUT_ITER", 0.0)
+    core.set_global_option("DLPNO_LOCAL_ORBITALS", "none")
+    core.set_local_option("DLPNO_CCSDT_Q", "PRINT", 1)
+    energy('cc3')
+--> energy('dlpno_ccsdt_q')
+    dlpno_ccsdt_q.exampleFN()
+
+
+!----------------------------------------------------------------------------------!
+!                                                                                  !
+! Fatal Error: Maximum DLPNO iterations exceeded.                                  !
+! Error occurred in file: /home/aj48384/github/dlpno_ccsdt_q/plugin.cc on line:    !
+!     1105                                                                         !
+! The most recent 5 function calls were:                                           !
+! psi::PsiException::PsiException(std::__cxx11::basic_string<char,                 !
+!     std::char_traits<char>, std::allocator<char> >, char const*, int)            !
+! psi::dlpno::dlpno_ccsdt_q::DLPNOCCSDT::compute_energy()                          !
+!                                                                                  !
+!----------------------------------------------------------------------------------!
+
