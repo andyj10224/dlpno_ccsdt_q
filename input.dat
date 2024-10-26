@@ -5,6 +5,7 @@ sys.path.insert(0, './..')
 import dlpno_ccsdt_q
 
 molecule {
+0 1
 O
 H 1 R
 H 1 R 2 A
@@ -52,10 +53,12 @@ set {
   t_cut_do_triples 0.0
   f_cut_t 0.0
   t_cut_iter 0.0
+  clear_ccsd_integrals false
 }
 
 set dlpno_ccsdt_q {
   print 1
+  dlpno_cc3 false
 }
 
 energy('cc3')

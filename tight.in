@@ -23,10 +23,12 @@ set {
   freeze_core false
   e_convergence 1.0e-6
   r_convergence 1.0e-6
+  clear_ccsd_integrals false
 }
 
 set dlpno_ccsdt_q {
   print 1
+  dlpno_cc3 false
 }
 
 energy('cc3')
