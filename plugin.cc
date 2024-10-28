@@ -1264,7 +1264,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
 
                 Tensor<double, 3> T_mjk("T_mjk", ntno_ijk, ntno_ijk, ntno_ijk);
                 sort(Indices{index::b, index::a, index::c}, &T_mjk, Indices{index::a, index::b, index::c}, T_jmk);
-                
 
                 T_jmk *= 2.0;
                 T_jmk -= T_mjk;
@@ -1447,14 +1446,14 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
 
         // outfile->Printf("There isn't time enough to sing of what You've done\n");
 
-        // Lesiuk Eq. 14a (chi_dali, chi_dalj, chi_dalk)
-        std::vector<Tensor<double, 3>> chi_dali_list(short_perms.size());
+        // Lesiuk Eq. 14a (chi_lida, chi_ljda, chi_lkda)
+        std::vector<Tensor<double, 3>> chi_lida_list(short_perms.size());
 
         for (int idx = 0; idx < ijk_idx.size(); ++idx) {
             int i = ijk_idx[idx];
 
-            chi_dali_list[idx] = Tensor<double, 3>("chi_dali", ntno_ijk, ntno_ijk, nlmo_ijk);
-            einsum(0.0, Indices{index::d, index::a, index::l}, &chi_dali_list[idx], 1.0, Indices{index::Q, index::d, index::a}, q_vv_t1, Indices{index::Q, index::l}, q_io_t1_list[idx]);
+            chi_lida_list[idx] = Tensor<double, 3>("chi_lida", nlmo_ijk, ntno_ijk, ntno_ijk);
+            einsum(0.0, Indices{index::l, index::d, index::a}, &chi_lida_list[idx], 1.0, Indices{index::Q, index::l}, q_io_t1_list[idx], Indices{index::Q, index::d, index::a}, q_vv_t1);
 
             Tensor<double, 3> T_im("T_im", nlmo_ijk, ntno_ijk, ntno_ijk);
             for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
@@ -1468,22 +1467,18 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 ::memcpy(&T_im(m_ijk, 0, 0), T_im_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
             }
 
-            Tensor<double, 3> chi_dali_temp("chi_dali_temp", nlmo_ijk, ntno_ijk, ntno_ijk);
-            einsum(0.0, Indices{index::l, index::d, index::a}, &chi_dali_temp, 1.0, Indices{index::m, index::e, index::l, index::d}, K_ldme_T2, Indices{index::m, index::e, index::a}, T_im);
-            Tensor<double, 3> chi_dali_temp2("chi_dali_temp2", ntno_ijk, ntno_ijk, nlmo_ijk);
-            sort(Indices{index::d, index::a, index::l}, &chi_dali_temp2, Indices{index::l, index::d, index::a}, chi_dali_temp);
-            chi_dali_list[idx] -= chi_dali_temp2;
+            einsum(1.0, Indices{index::l, index::d, index::a}, &chi_lida_list[idx], -1.0, Indices{index::m, index::e, index::l, index::d}, K_ldme_T2, Indices{index::m, index::e, index::a}, T_im);
         }
 
         // outfile->Printf("But I have eternity to try\n");
 
-        // Lesiuk Eq. 14b (chi_aild, chi_ajld, chi_akld)
-        std::vector<Tensor<double, 3>> chi_aidl_list(short_perms.size());
+        // Lesiuk Eq. 14b (chi_ldai, chi_ldaj, chi_ldak)
+        std::vector<Tensor<double, 3>> chi_ldai_list(short_perms.size());
         for (int idx = 0; idx < ijk_idx.size(); ++idx) {
             int i = ijk_idx[idx];
 
-            chi_aidl_list[idx] = Tensor<double, 3>("chi_aidl", ntno_ijk, ntno_ijk, nlmo_ijk);
-            einsum(0.0, Indices{index::a, index::d, index::l}, &chi_aidl_list[idx], 1.0, Indices{index::Q, index::a}, q_iv_t1_list[idx], Indices{index::Q, index::d, index::l}, q_vo);
+            chi_ldai_list[idx] = Tensor<double, 3>("chi_ldai", nlmo_ijk, ntno_ijk, ntno_ijk);
+            einsum(0.0, Indices{index::l, index::d, index::a}, &chi_ldai_list[idx], 1.0, Indices{index::Q, index::l, index::d}, q_ov_[ijk], Indices{index::Q, index::a}, q_iv_t1_list[idx]);
 
             Tensor<double, 3> T_mi("T_mi", nlmo_ijk, ntno_ijk, ntno_ijk);
             Tensor<double, 3> U_mi("U_mi", nlmo_ijk, ntno_ijk, ntno_ijk);
@@ -1500,14 +1495,10 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 ::memcpy(&U_mi(m_ijk, 0, 0), U_mi_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
             }
 
-            Tensor<double, 3> chi_aidl_temp("chi_aidl_temp", nlmo_ijk, ntno_ijk, ntno_ijk);
             // (l, e, m, d) (m, a, e) => (a, d, l)
-            einsum(0.0, Indices{index::l, index::d, index::a}, &chi_aidl_temp, -1.0, Indices{index::l, index::d, index::m, index::e}, K_ldme_T2, Indices{index::m, index::e, index::a}, T_mi);
+            einsum(1.0, Indices{index::l, index::d, index::a}, &chi_ldai_list[idx], -1.0, Indices{index::l, index::d, index::m, index::e}, K_ldme_T2, Indices{index::m, index::e, index::a}, T_mi);
             // (l, d, m, e) (m, a, e) => (a, d, l)
-            einsum(1.0, Indices{index::l, index::d, index::a}, &chi_aidl_temp, 1.0, Indices{index::l, index::d, index::m, index::e}, K_ldme, Indices{index::m, index::e, index::a}, U_mi);
-            Tensor<double, 3> chi_aidl_temp2("chi_aidl_temp2", ntno_ijk, ntno_ijk, nlmo_ijk);
-            sort(Indices{index::a, index::d, index::l}, &chi_aidl_temp2, Indices{index::l, index::d, index::a}, chi_aidl_temp);
-            chi_aidl_list[idx] += chi_aidl_temp2;
+            einsum(1.0, Indices{index::l, index::d, index::a}, &chi_ldai_list[idx], 1.0, Indices{index::l, index::d, index::m, index::e}, K_ldme, Indices{index::m, index::e, index::a}, U_mi);
         }
 
         // outfile->Printf("Praise to the Lord\n");
@@ -1545,22 +1536,49 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 Tensor<double, 3> T_ljk_clone = T_ljk;
                 T_ljk_clone *= -(chi_li_list[i_idx])(l_ijk);
                 Vperms[idx] += T_ljk_clone;
-                
+
+                // chi_lida contributions
+                Tensor<double, 2> chi_lida_temp = chi_lida_list[i_idx](l_ijk, All, All);
+                einsum(1.0, Indices{index::a, index::b, index::c}, &Vperms[idx], -1.0, Indices{index::d, index::a}, chi_lida_temp, Indices{index::d, index::b, index::c}, T_ljk);
+                Tensor<double, 3> Vperm_temp("Vperm_temp", ntno_ijk, ntno_ijk, ntno_ijk);
+                sort(Indices{index::b, index::a, index::c}, &Vperm_temp, Indices{index::a, index::b, index::c}, T_ljk);
+                Tensor<double, 3> Vperm_temp2("Vperm_temp2", ntno_ijk, ntno_ijk, ntno_ijk);
+                einsum(0.0, Indices{index::b, index::a, index::c}, &Vperm_temp2, 1.0, Indices{index::d, index::b}, chi_lida_temp, Indices{index::d, index::a, index::c}, Vperm_temp);
+                sort(Indices{index::a, index::b, index::c}, &Vperm_temp, Indices{index::b, index::a, index::c}, Vperm_temp2);
+                Vperms[idx] -= Vperm_temp;
+                einsum(1.0, Indices{index::a, index::b, index::c}, &Vperms[idx], -1.0, Indices{index::d, index::c}, chi_lida_temp, Indices{index::a, index::b, index::d}, T_ljk);
+
+                // chi_ldai contributions
+                Tensor<double, 3> T_jlk("T_jlk", ntno_ijk, ntno_ijk, ntno_ijk);
+                sort(Indices{index::b, index::a, index::c}, &T_jlk, Indices{index::a, index::b, index::c}, T_ljk);
+
+                Tensor<double, 3> T_kjl("T_kjl", ntno_ijk, ntno_ijk, ntno_ijk);
+                sort(Indices{index::c, index::b, index::a}, &T_kjl, Indices{index::a, index::b, index::c}, T_ljk);
+
+                T_ljk *= 2.0;
+                T_ljk -= T_jlk;
+                T_ljk -= T_kjl;
+
+                Tensor<double, 2> chi_ldai_temp = chi_ldai_list[i_idx](l_ijk, All, All);
+                einsum(1.0, Indices{index::a, index::b, index::c}, &Vperms[idx], 1.0, Indices{index::d, index::a}, chi_ldai_temp, Indices{index::d, index::b, index::c}, T_ljk);
+
+                /*
                 for (int a_ijk = 0; a_ijk < ntno_ijk; ++a_ijk) {
                     for (int b_ijk = 0; b_ijk < ntno_ijk; ++b_ijk) {
                         for (int c_ijk = 0; c_ijk < ntno_ijk; ++c_ijk) {
                             for (int d_ijk = 0; d_ijk < ntno_ijk; ++d_ijk) {
-                                // chi_dali contributions
-                                Vperms[idx](a_ijk, b_ijk, c_ijk) -= chi_dali_list[i_idx](d_ijk, a_ijk, l_ijk) * (T_ljk)(d_ijk, b_ijk, c_ijk)
-                                    + chi_dali_list[i_idx](d_ijk, b_ijk, l_ijk) * (T_ljk)(a_ijk, d_ijk, c_ijk) + chi_dali_list[i_idx](d_ijk, c_ijk, l_ijk) * (T_ljk)(a_ijk, b_ijk, d_ijk);
+                                // chi_lida contributions
+                                Vperms[idx](a_ijk, b_ijk, c_ijk) -= chi_lida_list[i_idx](l_ijk, d_ijk, a_ijk) * (T_ljk)(d_ijk, b_ijk, c_ijk)
+                                    + chi_lida_list[i_idx](l_ijk, d_ijk, b_ijk) * (T_ljk)(a_ijk, d_ijk, c_ijk) + chi_lida_list[i_idx](l_ijk, d_ijk, c_ijk) * (T_ljk)(a_ijk, b_ijk, d_ijk);
 
-                                // chi_aidl contributions
-                                Vperms[idx](a_ijk, b_ijk, c_ijk) += chi_aidl_list[i_idx](a_ijk, d_ijk, l_ijk) * (2 * T_ljk(d_ijk, b_ijk, c_ijk) 
+                                // chi_ldai contributions
+                                Vperms[idx](a_ijk, b_ijk, c_ijk) += chi_ldai_list[i_idx](l_ijk, d_ijk, a_ijk) * (2 * T_ljk(d_ijk, b_ijk, c_ijk) 
                                                                     - T_ljk(c_ijk, b_ijk, d_ijk) - T_ljk(b_ijk, d_ijk, c_ijk));
                             } // end d_ijk
                         } // end c_ijk
                     } // end b_ijk
                 } // end a_ijk
+                */
             }
 
             // T_ilm contributions
