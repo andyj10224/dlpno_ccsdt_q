@@ -437,6 +437,9 @@ void DLPNOCCSDT::compute_R_ia_triples(std::vector<SharedMatrix>& R_ia, std::vect
             prefactor = 0.5;
         }
 
+        auto S_ijk = submatrix_rows(*S_pao_, lmotriplet_to_paos_[ijk]);
+        S_ijk = linalg::doublet(X_tno_[ijk], S_ijk, true, false);
+
         std::vector<std::tuple<int, int, int>> P_S = {std::make_tuple(i, j, k), std::make_tuple(j, i, k), std::make_tuple(k, i, j)};
         std::vector<Tensor<double, 2>> K_ovov_list = {K_jvkv_[ijk], K_ivkv_[ijk], K_ivjv_[ijk]};
 
@@ -457,10 +460,10 @@ void DLPNOCCSDT::compute_R_ia_triples(std::vector<SharedMatrix>& R_ia, std::vect
             auto R_ia_psi = std::make_shared<Matrix>(n_tno_[ijk], 1);
             ::memcpy(R_ia_psi->get_pointer(), &(R_ia_cont)(0, 0), n_tno_[ijk] * sizeof(double));
 
-            auto S_ii_ijk = submatrix_rows_and_cols(*S_pao_, lmopair_to_paos_[ii], lmotriplet_to_paos_[ijk]);
-            S_ii_ijk = linalg::triplet(X_pno_[ii], S_ii_ijk, X_tno_[ijk], true, false, false);
+            auto S_ijk_ii = submatrix_cols(*S_ijk, lmopair_to_paos_[ii]);
+            S_ijk_ii = linalg::doublet(S_ijk_ii, X_pno_[ii], false, false);
 
-            R_ia_buffer[thread][i]->add(linalg::doublet(S_ii_ijk, R_ia_psi, false, false));
+            R_ia_buffer[thread][i]->add(linalg::doublet(S_ijk_ii, R_ia_psi, true, false));
         }
         
     } // end ijk
@@ -519,6 +522,9 @@ void DLPNOCCSDT::compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::
             prefactor = 0.5;
         }
 
+        auto S_ijk = submatrix_rows(*S_pao_, lmotriplet_to_paos_[ijk]);
+        S_ijk = linalg::doublet(X_tno_[ijk], S_ijk, true, false);
+
         // => Fkc contribution <= //
 
         std::vector<std::tuple<int, int, int>> P_S = {std::make_tuple(i, j, k), std::make_tuple(i, k, j), std::make_tuple(j, k, i)};
@@ -546,8 +552,9 @@ void DLPNOCCSDT::compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::
             einsum(0.0, Indices{index::a, index::b}, &R_iajb_cont_a, prefactor, Indices{index::a, index::b, index::c}, T_ijk_tilde, Indices{index::c}, Fkc);
             ::memcpy(psi_buffer->get_pointer(), R_iajb_cont_a.data(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
 
-            auto S_ijk_ij = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[ij]);
-            S_ijk_ij = linalg::triplet(X_tno_[ijk], S_ijk_ij, X_pno_[ij], true, false, false);
+            auto S_ijk_ij = submatrix_cols(*S_ijk, lmopair_to_paos_[ij]);
+            S_ijk_ij = linalg::doublet(S_ijk_ij, X_pno_[ij], false, false);
+
             R_iajb_buffer[thread][ij]->add(linalg::triplet(S_ijk_ij, psi_buffer, S_ijk_ij, true, false, false));
         }
 
@@ -607,8 +614,9 @@ void DLPNOCCSDT::compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::
             // Flush buffers (unfortunately we need to copy to Psi for now, this is NOT ideal)
             ::memcpy(psi_buffer->get_pointer(), R_iajb_cont_a.data(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
 
-            auto S_ijk_ij = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[ij]);
-            S_ijk_ij = linalg::triplet(X_tno_[ijk], S_ijk_ij, X_pno_[ij], true, false, false);
+            auto S_ijk_ij = submatrix_cols(*S_ijk, lmopair_to_paos_[ij]);
+            S_ijk_ij = linalg::doublet(S_ijk_ij, X_pno_[ij], false, false);
+
             R_iajb_buffer[thread][ij]->add(linalg::triplet(S_ijk_ij, psi_buffer, S_ijk_ij, true, false, false));
             
             for (int l_ijk = 0; l_ijk < nlmo_ijk; ++l_ijk) {
@@ -617,8 +625,8 @@ void DLPNOCCSDT::compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::
                 // Flush il buffer
                 ::memcpy(psi_buffer->get_pointer(), &(R_iajb_cont_b)(l_ijk, 0, 0), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
                 
-                auto S_ijk_il = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[il]);
-                S_ijk_il = linalg::triplet(X_tno_[ijk], S_ijk_il, X_pno_[il], true, false, false);
+                auto S_ijk_il = submatrix_cols(*S_ijk, lmopair_to_paos_[il]);
+                S_ijk_il = linalg::doublet(S_ijk_il, X_pno_[il], false, false);
                 R_iajb_buffer[thread][il]->subtract(linalg::triplet(S_ijk_il, psi_buffer, S_ijk_il, true, false, false));
             } // end l_ijk
         } // end perms
@@ -969,6 +977,9 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         std::vector<Tensor<double, 2>> q_io_t1_list = {q_io_t1, q_jo_t1, q_ko_t1};
         std::vector<Tensor<double, 2>> q_iv_t1_list = {q_iv_t1, q_jv_t1, q_kv_t1};
 
+        auto S_ijk = submatrix_rows(*S_pao_, lmotriplet_to_paos_[ijk]);
+        S_ijk = linalg::doublet(X_tno_[ijk], S_ijk, true, false);
+
         // outfile->Printf("With a thousand hallelujahs!\n");
 
         // => Form Fock Matrix Intermediates <= //
@@ -980,7 +991,7 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         // => F_ld (this is scoped to ensure that the intermediate tensors are not persistent in memory <= //
         Tensor<double, 2> F_ld("F_ld", nlmo_ijk, ntno_ijk); {
             // J contractions
-            einsum(0.0, Indices{index::l, index::d}, &F_ld, 2.0, Indices{index::Q}, gamma_Q, Indices{index::Q, index::l, index::d}, q_ov_[ijk]);
+            einsum(0.0, Indices{index::l, index::d}, &F_ld, 2.0, Indices{index::Q, index::l, index::d}, q_ov_[ijk], Indices{index::Q}, gamma_Q);
             
             // K contractions
             Tensor<double, 3> F_ld_K_temp("F_ld_K_temp", naux_ijk, nlmo_ijk, nlmo_ijk);
@@ -1005,12 +1016,12 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
 
             // J Contractions
             Tensor<double, 2> q_io_slice = q_ov_[ijk](All, All, i_ijk);
-            einsum(1.0, Indices{index::l}, &F_li_list[idx], 2.0, Indices{index::Q}, gamma_Q, Indices{index::Q, index::l}, q_io_slice);
+            einsum(1.0, Indices{index::l}, &F_li_list[idx], 2.0, Indices{index::Q, index::l}, q_io_slice, Indices{index::Q}, gamma_Q);
 
             // K contractions
             Tensor<double, 2> F_li_K_temp("F_li_K_temp", naux_ijk, ntno_ijk);
             einsum(0.0, Indices{index::Q, index::a}, &F_li_K_temp, 1.0, Indices{index::Q, index::m}, q_io_slice, Indices{index::m, index::a}, T_n_ijk_[ijk]);
-            einsum(1.0, Indices{index::l}, &F_li_list[idx], -1.0, Indices{index::Q, index::a}, F_li_K_temp, Indices{index::Q, index::a, index::l}, q_vo);
+            einsum(1.0, Indices{index::l}, &F_li_list[idx], -1.0, Indices{index::Q, index::a, index::l}, q_vo, Indices{index::Q, index::a}, F_li_K_temp);
 
             // Add F_ld contribution
             einsum(1.0, Indices{index::l}, &F_li_list[idx], 1.0, Indices{index::l, index::d}, F_ld, Indices{index::d}, T_i);
@@ -1025,7 +1036,7 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             }
 
             // J contribution
-            einsum(1.0, Indices{index::a, index::d}, &F_ad, 2.0, Indices{index::Q}, gamma_Q, Indices{index::Q, index::a, index::d}, q_vv_[ijk]);
+            einsum(1.0, Indices{index::a, index::d}, &F_ad, 2.0, Indices{index::Q, index::a, index::d}, q_vv_[ijk], Indices{index::Q}, gamma_Q);
             // K contribution
             Tensor<double, 3> F_ad_K_temp("F_ad_K_temp", naux_ijk, ntno_ijk, nlmo_ijk);
             einsum(0.0, Indices{index::Q, index::a, index::m}, &F_ad_K_temp, 1.0, Indices{index::Q, index::a, index::e}, q_vv_[ijk], Indices{index::m, index::e}, T_n_ijk_[ijk]);
@@ -1055,8 +1066,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 int lm = i_j_to_ij_[l][m];
                 if (lm == -1) continue;
 
-                auto S_ijk_lm = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[lm]);
-                S_ijk_lm = linalg::triplet(X_tno_[ijk], S_ijk_lm, X_pno_[lm], true, false, false);
+                auto S_ijk_lm = submatrix_cols(*S_ijk, lmopair_to_paos_[lm]);
+                S_ijk_lm = linalg::doublet(S_ijk_lm, X_pno_[lm], false, false);
 
                 auto T_lm_ijk = linalg::triplet(S_ijk_lm, T_iajb_[lm], S_ijk_lm, false, false, true);
                 ::memcpy(&T_lm(l_ijk, m_ijk, 0, 0), T_lm_ijk->get_pointer(), ntno_ijk * ntno_ijk * sizeof(double));
@@ -1068,6 +1079,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         einsum(0.0, Indices{index::d, index::b, index::l, index::e}, &K_dble, 1.0, Indices{index::Q, index::d, index::b}, q_vv_t1, Indices{index::Q, index::l, index::e}, q_ov_[ijk]);
         Tensor<double, 4> K_dble_T("K_dble_T", ntno_ijk, ntno_ijk, nlmo_ijk, ntno_ijk);
         sort(Indices{index::e, index::b, index::l, index::d}, &K_dble_T, Indices{index::d, index::b, index::l, index::e}, K_dble);
+        Tensor<double, 4> K_dble_T2("K_dble_T2", nlmo_ijk, ntno_ijk, ntno_ijk, ntno_ijk);
+        sort(Indices{index::l, index::c, index::e, index::d}, &K_dble_T2, Indices{index::d, index::c, index::l, index::e}, K_dble);
 
         for (int idx = 0; idx < ijk_idx.size(); ++idx) {
             int i = ijk_idx[idx];
@@ -1082,8 +1095,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 int l = lmotriplet_to_lmos_[ijk][l_ijk];
                 int li = i_j_to_ij_[l][i];
 
-                auto S_ijk_li = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[li]);
-                S_ijk_li = linalg::triplet(X_tno_[ijk], S_ijk_li, X_pno_[li], true, false, false);
+                auto S_ijk_li = submatrix_cols(*S_ijk, lmopair_to_paos_[li]);
+                S_ijk_li = linalg::doublet(S_ijk_li, X_pno_[li], false, false);
 
                 auto T_li_ijk = linalg::triplet(S_ijk_li, T_iajb_[li], S_ijk_li, false, false, true);
                 auto U_li_ijk = linalg::triplet(S_ijk_li, Tt_iajb_[li], S_ijk_li, false, false, true);
@@ -1128,8 +1141,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                     einsum(0.0, Indices{index::e, index::d}, &K_ed, 1.0, Indices{index::Q, index::e}, q_mv_slice, Indices{index::Q, index::d}, q_lv_slice);
                     
                     int mli = i_j_k_to_ijk_[mli_dense];
-                    auto S_ijk_mli = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmotriplet_to_paos_[mli]);
-                    S_ijk_mli = linalg::triplet(X_tno_[ijk], S_ijk_mli, X_tno_[mli], true, false, false);
+                    auto S_ijk_mli = submatrix_cols(*S_ijk, lmotriplet_to_paos_[mli]);
+                    S_ijk_mli = linalg::doublet(S_ijk_mli, X_tno_[mli], false, false);
 
                     // (2 t_{mli}^{ebc} - t_{mli}^{cbe} - t_{mli}^{bec})
                     auto T_mli_psi = matmul_3d(triples_permuter(T_iajbkc_[mli], m, l, i), S_ijk_mli, n_tno_[mli], n_tno_[ijk]);
@@ -1186,14 +1199,14 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 int m = lmotriplet_to_lmos_[ijk][m_ijk];
                 int mk = i_j_to_ij_[m][k], jm = i_j_to_ij_[j][m];
 
-                auto S_ijk_jm = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[jm]);
-                S_ijk_jm = linalg::triplet(X_tno_[ijk], S_ijk_jm, X_pno_[jm], true, false, false);
+                auto S_ijk_jm = submatrix_cols(*S_ijk, lmopair_to_paos_[jm]);
+                S_ijk_jm = linalg::doublet(S_ijk_jm, X_pno_[jm], false, false);
 
                 auto T_jm_ijk = linalg::triplet(S_ijk_jm, T_iajb_[jm], S_ijk_jm, false, false, true);
                 ::memcpy(&T_jm(m_ijk, 0, 0), T_jm_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
 
-                auto S_ijk_mk = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[mk]);
-                S_ijk_mk = linalg::triplet(X_tno_[ijk], S_ijk_mk, X_pno_[mk], true, false, false);
+                auto S_ijk_mk = submatrix_cols(*S_ijk, lmopair_to_paos_[mk]);
+                S_ijk_mk = linalg::doublet(S_ijk_mk, X_pno_[mk], false, false);
 
                 auto T_mk_ijk = linalg::triplet(S_ijk_mk, T_iajb_[mk], S_ijk_mk, false, false, true);
                 auto U_mk_ijk = linalg::triplet(S_ijk_mk, Tt_iajb_[mk], S_ijk_mk, false, false, true);
@@ -1221,45 +1234,43 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
 
             Tensor<double, 2> T_jk("T_jk", ntno_ijk, ntno_ijk);
 
-            auto S_ijk_jk = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[jk]);
-            S_ijk_jk = linalg::triplet(X_tno_[ijk], S_ijk_jk, X_pno_[jk], true, false, false);
+            auto S_ijk_jk = submatrix_cols(*S_ijk, lmopair_to_paos_[jk]);
+            S_ijk_jk = linalg::doublet(S_ijk_jk, X_pno_[jk], false, false);
             auto T_jk_ijk = linalg::triplet(S_ijk_jk, T_iajb_[jk], S_ijk_jk, false, false, true);
             ::memcpy(T_jk.data(), T_jk_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
-            // TODO: Optimize :(
-            einsum(1.0, Indices{index::l, index::c}, &rho_ljck, 1.0, Indices{index::d, index::c, index::l, index::e}, K_dble, Indices{index::e, index::d}, T_jk);
+            einsum(1.0, Indices{index::l, index::c}, &rho_ljck, 1.0, Indices{index::l, index::c, index::e, index::d}, K_dble_T2, Indices{index::e, index::d}, T_jk);
 
-            // m_ijk (nasty)
             for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
                 int m = lmotriplet_to_lmos_[ijk][m_ijk];
-                int mjk_dense = m * naocc * naocc + j * naocc + k;
-                if (!i_j_k_to_ijk_.count(mjk_dense)) continue;
+                int jmk_dense = j * naocc * naocc + m * naocc + k;
+                if (!i_j_k_to_ijk_.count(jmk_dense)) continue;
 
                 Tensor<double, 2> q_mv_slice = q_ov_[ijk](All, m_ijk, All);
                 Tensor<double, 3> K_lde("K_lde", nlmo_ijk, ntno_ijk, ntno_ijk);
                 einsum(0.0, Indices{index::l, index::d, index::e}, &K_lde, 1.0, Indices{index::Q, index::l, index::d}, q_ov_[ijk], Indices{index::Q, index::e}, q_mv_slice);
 
-                int mjk = i_j_k_to_ijk_[mjk_dense];
-                auto S_ijk_mjk = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmotriplet_to_paos_[mjk]);
-                S_ijk_mjk = linalg::triplet(X_tno_[ijk], S_ijk_mjk, X_tno_[mjk], true, false, false);
+                int jmk = i_j_k_to_ijk_[jmk_dense];
+                auto S_ijk_jmk = submatrix_cols(*S_ijk, lmotriplet_to_paos_[jmk]);
+                S_ijk_jmk = linalg::doublet(S_ijk_jmk, X_tno_[jmk], false, false);
 
-                // (2 t_{mjk}^{edc} - t_{mjk}^{cde} - t_{mjk}^{dec})
-                auto T_mjk_psi = matmul_3d(triples_permuter(T_iajbkc_[mjk], m, j, k), S_ijk_mjk, n_tno_[mjk], n_tno_[ijk]);
-
-                Tensor<double, 3> T_mjk("T_mjk", ntno_ijk, ntno_ijk, ntno_ijk);
-                ::memcpy(T_mjk.data(), T_mjk_psi->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
+                // (2 t_{jmk}^{dec} - t_{jmk}^{dce} - t_{jmk}^{edc})
+                auto T_jmk_psi = matmul_3d(triples_permuter(T_iajbkc_[jmk], j, m, k), S_ijk_jmk, n_tno_[jmk], n_tno_[ijk]);
 
                 Tensor<double, 3> T_jmk("T_jmk", ntno_ijk, ntno_ijk, ntno_ijk);
-                sort(Indices{index::b, index::a, index::c}, &T_jmk, Indices{index::a, index::b, index::c}, T_mjk);
+                ::memcpy(T_jmk.data(), T_jmk_psi->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
 
-                Tensor<double, 3> T_kjm("T_kjm", ntno_ijk, ntno_ijk, ntno_ijk);
-                sort(Indices{index::c, index::b, index::a}, &T_kjm, Indices{index::a, index::b, index::c}, T_mjk);
+                Tensor<double, 3> T_jkm("T_jkm", ntno_ijk, ntno_ijk, ntno_ijk);
+                sort(Indices{index::a, index::c, index::b}, &T_jkm, Indices{index::a, index::b, index::c}, T_jmk);
 
-                T_mjk *= 2.0;
-                T_mjk -= T_jmk;
-                T_mjk -= T_kjm;
+                Tensor<double, 3> T_mjk("T_mjk", ntno_ijk, ntno_ijk, ntno_ijk);
+                sort(Indices{index::b, index::a, index::c}, &T_mjk, Indices{index::a, index::b, index::c}, T_jmk);
+                
 
-                // TODO: Optimize
-                einsum(1.0, Indices{index::l, index::c}, &rho_ljck, 1.0, Indices{index::l, index::d, index::e}, K_lde, Indices{index::e, index::d, index::c}, T_mjk);
+                T_jmk *= 2.0;
+                T_jmk -= T_mjk;
+                T_jmk -= T_jkm;
+                
+                einsum(1.0, Indices{index::l, index::c}, &rho_ljck, 1.0, Indices{index::l, index::d, index::e}, K_lde, Indices{index::d, index::e, index::c}, T_jmk);
             }
 
             rho_ljck_list.push_back(rho_ljck);
@@ -1280,9 +1291,9 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             /// => rho_dbck contribution <= ///
 
             // Compute overlap between TNOs of triplet ijk and PNOs of pair ij
-            auto S_ij_ijk = submatrix_rows_and_cols(*S_pao_, lmopair_to_paos_[ij], lmotriplet_to_paos_[ijk]);
-            S_ij_ijk = linalg::triplet(X_pno_[ij], S_ij_ijk, X_tno_[ijk], true, false, false);
-            auto T_ij = linalg::triplet(S_ij_ijk, T_iajb_[ij], S_ij_ijk, true, false, false);
+            auto S_ijk_ij = submatrix_cols(*S_ijk, lmopair_to_paos_[ij]);
+            S_ijk_ij = linalg::doublet(S_ijk_ij, X_pno_[ij], false, false);
+            auto T_ij = linalg::triplet(S_ijk_ij, T_iajb_[ij], S_ijk_ij, false, false, true);
             Tensor<double, 2> T_ij_einsums("T_ij", n_tno_[ijk], n_tno_[ijk]);
             ::memcpy(T_ij_einsums.data(), T_ij->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
 
@@ -1296,9 +1307,9 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 int l = lmotriplet_to_lmos_[ijk][l_ijk];
                 int il = i_j_to_ij_[i][l];
 
-                auto S_il_ijk = submatrix_rows_and_cols(*S_pao_, lmopair_to_paos_[il], lmotriplet_to_paos_[ijk]);
-                S_il_ijk = linalg::triplet(X_pno_[il], S_il_ijk, X_tno_[ijk], true, false, false);
-                auto T_il = linalg::triplet(S_il_ijk, T_iajb_[il], S_il_ijk, true, false, false);
+                auto S_ijk_il = submatrix_cols(*S_ijk, lmopair_to_paos_[il]);
+                S_ijk_il = linalg::doublet(S_ijk_il, X_pno_[il], false, false);
+                auto T_il = linalg::triplet(S_ijk_il, T_iajb_[il], S_ijk_il, false, false, true);
                 ::memcpy(&T_il_einsums(l_ijk, 0, 0), T_il->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
             } // end l_ijk
             
@@ -1335,8 +1346,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 int m = lmotriplet_to_lmos_[ijk][m_ijk];
                 int mi = i_j_to_ij_[m][i];
 
-                auto S_ijk_mi = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[mi]);
-                S_ijk_mi = linalg::triplet(X_tno_[ijk], S_ijk_mi, X_pno_[mi], true, false, false);
+                auto S_ijk_mi = submatrix_cols(*S_ijk, lmopair_to_paos_[mi]);
+                S_ijk_mi = linalg::doublet(S_ijk_mi, X_pno_[mi], false, false);
 
                 auto U_mi_ijk = linalg::triplet(S_ijk_mi, Tt_iajb_[mi], S_ijk_mi, false, false, true);
                 ::memcpy(&U_mi(m_ijk, 0, 0), U_mi_ijk->get_pointer(), ntno_ijk * ntno_ijk * sizeof(double));
@@ -1366,8 +1377,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 Tensor<double, 2> K_de("K_de", ntno_ijk, ntno_ijk);
                 einsum(0.0, Indices{index::d, index::e}, &K_de, 1.0, Indices{index::Q, index::d}, q_lv, Indices{index::Q, index::e}, q_mv);
 
-                auto S_ijk_lm = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[lm]);
-                S_ijk_lm = linalg::triplet(X_tno_[ijk], S_ijk_lm, X_pno_[lm], true, false, false);
+                auto S_ijk_lm = submatrix_cols(*S_ijk, lmopair_to_paos_[lm]);
+                S_ijk_lm = linalg::doublet(S_ijk_lm, X_pno_[lm], false, false);
 
                 auto U_lm_ijk = linalg::triplet(S_ijk_lm, Tt_iajb_[lm], S_ijk_lm, false, false, true);
 
@@ -1392,8 +1403,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             chi_jk_list[idx] = Tensor<double, 2>("chi_jk", nlmo_ijk, nlmo_ijk);
             einsum(0.0, Indices{index::l, index::m}, &chi_jk_list[idx], 1.0, Indices{index::Q, index::l}, q_io_t1_list[j_idx], Indices{index::Q, index::m}, q_io_t1_list[k_idx]);
 
-            auto S_ijk_jk = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[jk]);
-            S_ijk_jk = linalg::triplet(X_tno_[ijk], S_ijk_jk, X_pno_[jk], true, false, false);
+            auto S_ijk_jk = submatrix_cols(*S_ijk, lmopair_to_paos_[jk]);
+            S_ijk_jk = linalg::doublet(S_ijk_jk, X_pno_[jk], false, false);
             auto T_jk_psi = linalg::triplet(S_ijk_jk, T_iajb_[jk], S_ijk_jk, false, false, true);
 
             Tensor<double, 2> T_jk("T_jk", ntno_ijk, ntno_ijk);
@@ -1447,8 +1458,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 int m = lmotriplet_to_lmos_[ijk][m_ijk];
                 int mi = i_j_to_ij_[m][i];
 
-                auto S_ijk_mi = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[mi]);
-                S_ijk_mi = linalg::triplet(X_tno_[ijk], S_ijk_mi, X_pno_[mi], true, false, false);
+                auto S_ijk_mi = submatrix_cols(*S_ijk, lmopair_to_paos_[mi]);
+                S_ijk_mi = linalg::doublet(S_ijk_mi, X_pno_[mi], false, false);
 
                 auto T_mi_ijk = linalg::triplet(S_ijk_mi, T_iajb_[mi], S_ijk_mi, false, false, true);
                 ::memcpy(&T_mi(m_ijk, 0, 0), T_mi_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
@@ -1475,8 +1486,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 int m = lmotriplet_to_lmos_[ijk][m_ijk];
                 int im = i_j_to_ij_[i][m];
 
-                auto S_ijk_im = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[im]);
-                S_ijk_im = linalg::triplet(X_tno_[ijk], S_ijk_im, X_pno_[im], true, false, false);
+                auto S_ijk_im = submatrix_cols(*S_ijk, lmopair_to_paos_[im]);
+                S_ijk_im = linalg::doublet(S_ijk_im, X_pno_[im], false, false);
 
                 auto T_im_ijk = linalg::triplet(S_ijk_im, T_iajb_[im], S_ijk_im, false, false, true);
                 auto U_im_ijk = linalg::triplet(S_ijk_im, Tt_iajb_[im], S_ijk_im, false, false, true);
@@ -1515,8 +1526,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 if (!i_j_k_to_ijk_.count(ljk_dense)) continue;
                 int ljk = i_j_k_to_ijk_[ljk_dense];
                 
-                auto S_ijk_ljk = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmotriplet_to_paos_[ljk]);
-                S_ijk_ljk = linalg::triplet(X_tno_[ijk], S_ijk_ljk, X_tno_[ljk], true, false, false);
+                auto S_ijk_ljk = submatrix_cols(*S_ijk, lmotriplet_to_paos_[ljk]);
+                S_ijk_ljk = linalg::doublet(S_ijk_ljk, X_tno_[ljk], false, false);
 
                 Tensor<double, 3> T_ljk("T_ljk", ntno_ijk, ntno_ijk, ntno_ijk);
                 auto T_ljk_psi = matmul_3d(triples_permuter(T_iajbkc_[ljk], l, j, k), S_ijk_ljk, n_tno_[ljk], n_tno_[ijk]);
@@ -1553,8 +1564,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                     if (!i_j_k_to_ijk_.count(ilm_dense)) continue;
                     int ilm = i_j_k_to_ijk_[ilm_dense];
 
-                    auto S_ijk_ilm = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmotriplet_to_paos_[ilm]);
-                    S_ijk_ilm = linalg::triplet(X_tno_[ijk], S_ijk_ilm, X_tno_[ilm], true, false, false);
+                    auto S_ijk_ilm = submatrix_cols(*S_ijk, lmotriplet_to_paos_[ilm]);
+                    S_ijk_ilm = linalg::doublet(S_ijk_ilm, X_tno_[ilm], false, false);
 
                     Tensor<double, 3> T_ilm("T_ilm", ntno_ijk, ntno_ijk, ntno_ijk);
                     auto T_ilm_psi = matmul_3d(triples_permuter(T_iajbkc_[ilm], i, l, m), S_ijk_ilm, n_tno_[ilm], n_tno_[ijk]);
