@@ -1,0 +1,37 @@
+
+# PYTHONPATH must include directory above plugin directory.
+#     Define either externally or here, then import plugin.
+sys.path.insert(0, './..')
+import dlpno_ccsdt_q
+
+molecule {
+  0 1
+  O  -1.551007  -0.114520   0.000000
+  H  -1.934259   0.762503   0.000000
+  H  -0.599677   0.040712   0.000000
+  @O   1.350625   0.111469   0.000000
+  @H   1.680398  -0.373741  -0.758561
+  @H   1.680398  -0.373741   0.758561
+  symmetry c1
+}
+
+set {
+  scf_type df
+  mp2_type df
+  basis cc-pvdz
+  df_basis_mp2 cc-pvdz-ri
+  pno_convergence tight
+  freeze_core true
+  e_convergence 1.0e-6
+  r_convergence 1.0e-6
+  clear_ccsd_integrals false
+}
+
+set dlpno_ccsdt_q {
+  print 1
+  dlpno_cc3 false
+}
+
+energy('dlpno_ccsdt_q')
+
+dlpno_ccsdt_q.exampleFN()

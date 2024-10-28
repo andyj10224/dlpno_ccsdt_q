@@ -62,6 +62,8 @@ set dlpno_ccsdt_q {
 }
 
 energy('cc3')
-energy('dlpno_ccsdt_q')
+e = energy('dlpno_ccsdt_q')
 
 dlpno_ccsdt_q.exampleFN()
+
+#compare_values(e, -76.24347131, 7, "Water DLPNO-CCSDT Regression Test")

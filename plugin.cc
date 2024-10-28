@@ -41,6 +41,7 @@
 #include "psi4/libpsio/psio.hpp"
 #include "psi4/libmints/molecule.h"
 #include "psi4/lib3index/dfhelper.h"
+#include "psi4/libdiis/diismanager.h"
 
 #include "/home/aj48384/github/psi4/psi4/src/psi4/dlpno/dlpno.h"
 #include "/home/aj48384/github/psi4/psi4/src/psi4/dlpno/sparse.h"
@@ -1636,15 +1637,16 @@ void DLPNOCCSDT::lccsdt_iterations() {
     T_iajbkc_tilde_.resize(n_lmo_triplets);
 
     // LCCSDT iterations
-
     outfile->Printf("\n  ==> Local CCSDT <==\n\n");
     outfile->Printf("    E_CONVERGENCE = %.2e\n", options_.get_double("E_CONVERGENCE"));
     outfile->Printf("    R_CONVERGENCE = %.2e\n\n", options_.get_double("R_CONVERGENCE"));
     outfile->Printf("                       Corr. Energy    Delta E     Max R1     Max R2     Max R3     Time (s)\n");
 
     int iteration = 1, max_iteration = options_.get_int("DLPNO_MAXITER");
-    double e_curr = 0.0, e_prev = 0.0, r_curr1 = 0.0, r_curr2 = 0.0, r_curr3 = 0.0;
+    double e_curr = 0.0, e_prev = 0.0, e_weak = 0.0, r_curr1 = 0.0, r_curr2 = 0.0, r_curr3 = 0.0;
     bool e_converged = false, r_converged = false;
+
+    DIISManager diis(options_.get_int("DIIS_MAX_VECS"), "LCCSDT DIIS", DIISManager::RemovalPolicy::LargestError, DIISManager::StoragePolicy::InCore);
 
     while (!(e_converged && r_converged)) {
         // RMS of residual per LMO orbital, for assessing convergence
@@ -1775,14 +1777,46 @@ void DLPNOCCSDT::lccsdt_iterations() {
             R_iajbkc_rms[ijk] = R_iajbkc[ijk]->rms();
         }
 
+        // DIIS Extrapolation
+        std::vector<SharedMatrix> T_vecs;
+        T_vecs.reserve(T_ia_.size() + T_iajb_.size() + T_iajbkc_.size());
+        T_vecs.insert(T_vecs.end(), T_ia_.begin(), T_ia_.end());
+        T_vecs.insert(T_vecs.end(), T_iajb_.begin(), T_iajb_.end());
+        T_vecs.insert(T_vecs.end(), T_iajbkc_.begin(), T_iajbkc_.end());
+
+        std::vector<SharedMatrix> R_vecs;
+        R_vecs.reserve(R_ia.size() + R_iajb.size() + R_iajbkc.size());
+        R_vecs.insert(R_vecs.end(), R_ia.begin(), R_ia.end());
+        R_vecs.insert(R_vecs.end(), R_iajb.begin(), R_iajb.end());
+        R_vecs.insert(R_vecs.end(), R_iajbkc.begin(), R_iajbkc.end());
+
+        auto T_vecs_flat = flatten_mats(T_vecs);
+        auto R_vecs_flat = flatten_mats(R_vecs);
+
+        if (iteration == 1) {
+            diis.set_error_vector_size(R_vecs_flat);
+            diis.set_vector_size(T_vecs_flat);
+        }
+
+        diis.add_entry(R_vecs_flat.get(), T_vecs_flat.get());
+        diis.extrapolate(T_vecs_flat.get());
+
+        copy_flat_mats(T_vecs_flat, T_vecs);
+
         // evaluate energy and convergence
         e_prev = e_curr;
         e_curr = 0.0;
-#pragma omp parallel for schedule(dynamic, 1) reduction(+ : e_curr)
+        e_weak = 0.0;
+#pragma omp parallel for schedule(dynamic, 1) reduction(+ : e_curr, e_weak)
         for (int ij = 0; ij < n_lmo_pairs; ++ij) {
             auto &[i, j] = ij_to_i_j_[ij];
             int ii = i_j_to_ij_[i][i], jj = i_j_to_ij_[j][j];
             int ij_idx = (i < j) ? ij : ij_to_ji_[ij];
+
+            // Update anti-symmetrized amplitudes
+            Tt_iajb_[ij] = T_iajb_[ij]->clone();
+            Tt_iajb_[ij]->scale(2.0);
+            Tt_iajb_[ij]->subtract(T_iajb_[ij]->transpose());
 
             auto tau = T_iajb_[ij]->clone();
             auto S_ij_ii = S_pno_ij_nn_[ij_idx][i];
@@ -1796,7 +1830,10 @@ void DLPNOCCSDT::lccsdt_iterations() {
                 } // end b_ij
             } // end a_ij
 
-            e_curr += tau->vector_dot(L_iajb_[ij]);
+            double e_ij = tau->vector_dot(L_iajb_[ij]);
+            
+            e_curr += e_ij;
+            if (i_j_to_ij_strong_[i][j] == -1) e_weak += e_ij;
         }
 
         double r_curr1 = *max_element(R_ia_rms.begin(), R_ia_rms.end());
@@ -1808,7 +1845,8 @@ void DLPNOCCSDT::lccsdt_iterations() {
         r_converged &= fabs(r_curr3) < options_.get_double("R_CONVERGENCE");
         e_converged = fabs(e_curr - e_prev) < options_.get_double("E_CONVERGENCE");
 
-        e_lccsdt_ = e_curr;
+        e_lccsdt_ = e_curr - e_weak;
+        de_weak_ = e_weak;
 
         std::time_t time_stop = std::time(nullptr);
 
@@ -1835,7 +1873,7 @@ double DLPNOCCSDT::compute_energy() {
     compute_integrals();
     lccsdt_iterations();
 
-    double e_scf = reference_wavefunction_->energy();
+    double e_scf = variables_["SCF TOTAL ENERGY"];
     double e_ccsdt_corr = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
     double e_ccsdt_total = e_scf + e_ccsdt_corr;
 
@@ -1850,15 +1888,32 @@ double DLPNOCCSDT::compute_energy() {
 }
 
 void DLPNOCCSDT::print_results() {
+
+    int naocc = i_j_to_ij_.size();
+    double t1diag = 0.0;
+#pragma omp parallel for reduction(+ : t1diag)
+    for (int i = 0; i < naocc; ++i) {
+        t1diag += T_ia_[i]->vector_dot(T_ia_[i]);
+    }
+    t1diag = std::sqrt(t1diag / (2.0 * naocc));
+    outfile->Printf("\n  T1 Diagnostic: %8.8f \n", t1diag);
+    if (t1diag > 0.02) {
+        outfile->Printf("    WARNING: T1 Diagnostic is greater than 0.02, CCSD results may be unreliable!\n");
+    }
+    set_scalar_variable("CC T1 DIAGNOSTIC", t1diag);
+
     double e_total = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
 
     outfile->Printf("  \n");
     outfile->Printf("  Total DLPNO-CCSDT Correlation Energy: %16.12f \n", e_total);
     outfile->Printf("    LCCSDT Correlation Energy:          %16.12f \n", e_lccsdt_);
-    outfile->Printf("    Full (T) - Iterative (T) Diff:      %16.12f \n", e_lccsd_t_ - e_lccsd_ - E_T_);
-    outfile->Printf("    Net non-strong pair contributions:  %16.12f \n", de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_);
-    outfile->Printf("    Andy Jiang... FOR THREEEEEEEEEEE!!!\n\n\n");
-    outfile->Printf("  @Total DLPNO-CCSDT Energy: %16.12f \n", variables_["SCF TOTAL ENERGY"] + e_total);
+    outfile->Printf("    Weak Pair Contribution:             %16.12f \n", de_weak_);
+    outfile->Printf("    Eliminated Pair MP2 Correction:     %16.12f \n", de_lmp2_eliminated_);
+    outfile->Printf("    Dipole Pair Correction:             %16.12f \n", de_dipole_);
+    outfile->Printf("    PNO Truncation Correction:          %16.12f \n", de_pno_total_);
+    outfile->Printf("    Triples Rank Correction (T0):       %16.12f \n", e_lccsd_t_ - e_lccsd_ - E_T_);
+    outfile->Printf("    Houston is (still) a delinquent\n");
+    outfile->Printf("\n\n  @Total DLPNO-CCSDT Energy: %16.12f \n", variables_["SCF TOTAL ENERGY"] + e_total);
 }
 
 extern "C" PSI_API

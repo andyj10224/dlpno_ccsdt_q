@@ -31,10 +31,10 @@
     -----------------------------------------------------------------------
 
 
-    Psi4 started on: Saturday, 26 October 2024 12:49AM
+    Psi4 started on: Monday, 28 October 2024 10:18AM
 
-    Process ID: 1337895
-    Host:       b6-14
+    Process ID: 1660075
+    Host:       b5-23
     PSIDATADIR: /home/aj48384/github/psi4/objdir_p4sums/stage/share/psi4
     Memory:     500.0 MiB
     Threads:    32
@@ -89,8 +89,8 @@ Scratch directory: /tmp/
     Onebody   basis highest AM E, G, H:  -, -, -
     Solid Harmonics ordering:            Gaussian
 
-*** tstart() called on b6-14
-*** at Sat Oct 26 00:49:48 2024
+*** tstart() called on b5-23
+*** at Mon Oct 28 10:19:00 2024
 
    => Loading Basis Set <=
 
@@ -211,17 +211,17 @@ Scratch directory: /tmp/
 
                            Total Energy        Delta E     RMS |[F,P]|
 
-   @DF-RHF iter SAD:   -75.50772041125666   -7.55077e+01   0.00000e+00 
-   @DF-RHF iter   1:   -75.95376270516427   -4.46042e-01   1.74061e-02 ADIIS/DIIS
-   @DF-RHF iter   2:   -76.00706363301624   -5.33009e-02   9.96851e-03 ADIIS/DIIS
-   @DF-RHF iter   3:   -76.02615671349382   -1.90931e-02   1.06884e-03 ADIIS/DIIS
-   @DF-RHF iter   4:   -76.02661223626170   -4.55523e-04   2.10086e-04 ADIIS/DIIS
-   @DF-RHF iter   5:   -76.02663177945182   -1.95432e-05   3.85634e-05 DIIS
-   @DF-RHF iter   6:   -76.02663270868030   -9.29228e-07   6.09957e-06 DIIS
-   @DF-RHF iter   7:   -76.02663273456484   -2.58845e-08   8.53454e-07 DIIS
-   @DF-RHF iter   8:   -76.02663273508932   -5.24480e-10   1.99393e-07 DIIS
-   @DF-RHF iter   9:   -76.02663273512243   -3.31113e-11   3.36929e-08 DIIS
-   @DF-RHF iter  10:   -76.02663273512333   -8.95284e-13   2.78588e-09 DIIS
+   @DF-RHF iter SAD:   -75.50772041125668   -7.55077e+01   0.00000e+00 
+   @DF-RHF iter   1:   -75.95376270516431   -4.46042e-01   1.74061e-02 ADIIS/DIIS
+   @DF-RHF iter   2:   -76.00706363301620   -5.33009e-02   9.96851e-03 ADIIS/DIIS
+   @DF-RHF iter   3:   -76.02615671349383   -1.90931e-02   1.06884e-03 ADIIS/DIIS
+   @DF-RHF iter   4:   -76.02661223626171   -4.55523e-04   2.10086e-04 ADIIS/DIIS
+   @DF-RHF iter   5:   -76.02663177945176   -1.95432e-05   3.85634e-05 DIIS
+   @DF-RHF iter   6:   -76.02663270868027   -9.29229e-07   6.09957e-06 DIIS
+   @DF-RHF iter   7:   -76.02663273456491   -2.58846e-08   8.53454e-07 DIIS
+   @DF-RHF iter   8:   -76.02663273508931   -5.24395e-10   1.99393e-07 DIIS
+   @DF-RHF iter   9:   -76.02663273512249   -3.31823e-11   3.36929e-08 DIIS
+   @DF-RHF iter  10:   -76.02663273512340   -9.09495e-13   2.78588e-09 DIIS
   Energy and wave function converged.
 
 
@@ -251,14 +251,14 @@ Scratch directory: /tmp/
     NA   [     5 ]
     NB   [     5 ]
 
-  @DF-RHF Final Energy:   -76.02663273512333
+  @DF-RHF Final Energy:   -76.02663273512340
 
    => Energetics <=
 
     Nuclear Repulsion Energy =              9.1681932964243487
-    One-Electron Energy =                -123.1035071851673877
-    Two-Electron Energy =                  37.9086811536197104
-    Total Energy =                        -76.0266327351233286
+    One-Electron Energy =                -123.1035071851675156
+    Two-Electron Energy =                  37.9086811536197672
+    Total Energy =                        -76.0266327351233997
 
 Computation Completed
 
@@ -282,15 +282,15 @@ Properties computed using the SCF density matrix
 
  ------------------------------------------------------------------------------------
 
-*** tstop() called on b6-14 at Sat Oct 26 00:49:49 2024
+*** tstop() called on b5-23 at Mon Oct 28 10:19:00 2024
 Module time:
-	user time   =      12.06 seconds =       0.20 minutes
-	system time =       0.56 seconds =       0.01 minutes
-	total time  =          1 seconds =       0.02 minutes
+	user time   =      12.43 seconds =       0.21 minutes
+	system time =       0.62 seconds =       0.01 minutes
+	total time  =          0 seconds =       0.00 minutes
 Total time:
-	user time   =      12.06 seconds =       0.20 minutes
-	system time =       0.56 seconds =       0.01 minutes
-	total time  =          1 seconds =       0.02 minutes
+	user time   =      12.43 seconds =       0.21 minutes
+	system time =       0.62 seconds =       0.01 minutes
+	total time  =          0 seconds =       0.00 minutes
  MINTS: Wrapper to libmints.
    by Justin Turney
 
@@ -315,8 +315,8 @@ Total time:
         Stored in file 33.
 
 
-*** tstart() called on b6-14
-*** at Sat Oct 26 00:49:49 2024
+*** tstart() called on b5-23
+*** at Mon Oct 28 10:19:00 2024
 
 
 	Wfn Parameters:
@@ -386,20 +386,20 @@ Total time:
 	Total:                                     0.009 (MW) /      0.072 (MB)
 
 	Nuclear Rep. energy          =      9.16819329642435
-	SCF energy                   =    -76.02663273512333
-	One-electron energy          =   -123.10350712127773
-	Two-electron energy          =     37.90866017567289
-	Reference energy             =    -76.02665364918049
+	SCF energy                   =    -76.02663273512340
+	One-electron energy          =   -123.10350712127777
+	Two-electron energy          =     37.90866017567291
+	Reference energy             =    -76.02665364918052
 
-*** tstop() called on b6-14 at Sat Oct 26 00:49:49 2024
+*** tstop() called on b5-23 at Mon Oct 28 10:19:00 2024
 Module time:
-	user time   =       4.36 seconds =       0.07 minutes
-	system time =       0.12 seconds =       0.00 minutes
+	user time   =       5.08 seconds =       0.08 minutes
+	system time =       0.11 seconds =       0.00 minutes
 	total time  =          0 seconds =       0.00 minutes
 Total time:
-	user time   =      19.43 seconds =       0.32 minutes
-	system time =       0.82 seconds =       0.01 minutes
-	total time  =          1 seconds =       0.02 minutes
+	user time   =      20.46 seconds =       0.34 minutes
+	system time =       0.87 seconds =       0.01 minutes
+	total time  =          0 seconds =       0.00 minutes
             **************************
             *                        *
             *        CCENERGY        *
@@ -407,8 +407,8 @@ Total time:
             **************************
 
     Nuclear Rep. energy (wfn)     =    9.168193296424349
-    SCF energy          (wfn)     =  -76.026632735123329
-    Reference energy    (file100) =  -76.026653649180489
+    SCF energy          (wfn)     =  -76.026632735123400
+    Reference energy    (file100) =  -76.026653649180517
 
     Input parameters:
     -----------------
@@ -445,11 +445,11 @@ MP2 correlation energy -0.2041399946610199
      0        -0.204139994661020    0.000e+00    0.000000    0.000000    0.000000    0.109712
      1        -0.212081374481482    2.724e-02    0.003538    0.007523    0.007523    0.119139
      2        -0.216366160345259    9.845e-03    0.004636    0.009570    0.009570    0.125189
-     3        -0.216575091484722    2.103e-03    0.004987    0.010483    0.010483    0.126182
+     3        -0.216575091484723    2.103e-03    0.004987    0.010483    0.010483    0.126182
      4        -0.216601688314117    5.477e-04    0.005045    0.010759    0.010759    0.126378
-     5        -0.216606008606737    1.618e-04    0.005071    0.010883    0.010883    0.126391
+     5        -0.216606008606736    1.618e-04    0.005071    0.010883    0.010883    0.126391
      6        -0.216603606130417    5.093e-05    0.005078    0.010924    0.010924    0.126382
-     7        -0.216603714457065    1.353e-05    0.005081    0.010937    0.010937    0.126381
+     7        -0.216603714457066    1.353e-05    0.005081    0.010937    0.010937    0.126381
      8        -0.216603542740287    2.384e-06    0.005082    0.010939    0.010939    0.126380
      9        -0.216603545637726    4.940e-07    0.005082    0.010939    0.010939    0.126380
 
@@ -480,16 +480,16 @@ MP2 correlation energy -0.2041399946610199
       2   4   6   5        -0.0230293565
       4   2   5   6        -0.0230293565
 
-    SCF energy       (wfn)                    =  -76.026632735123329
-    Reference energy (file100)                =  -76.026653649180489
+    SCF energy       (wfn)                    =  -76.026632735123400
+    Reference energy (file100)                =  -76.026653649180517
 
-    Opposite-spin MP2 correlation energy      =   -0.152593413806201
+    Opposite-spin MP2 correlation energy      =   -0.152593413806202
     Same-spin MP2 correlation energy          =   -0.051546580854818
     Singles MP2 correlation energy            =   -0.000000000000000
     MP2 correlation energy                    =   -0.204139994661020
-      * MP2 total energy                      =  -76.230793643841508
+      * MP2 total energy                      =  -76.230793643841537
     CC3 correlation energy                    =   -0.216603545637726
-      * CC3 total energy                      =  -76.243257194818213
+      * CC3 total energy                      =  -76.243257194818241
 
 
 Scratch directory: /tmp/
@@ -500,8 +500,8 @@ Scratch directory: /tmp/
     Onebody   basis highest AM E, G, H:  -, -, -
     Solid Harmonics ordering:            Gaussian
 
-*** tstart() called on b6-14
-*** at Sat Oct 26 00:49:50 2024
+*** tstart() called on b5-23
+*** at Mon Oct 28 10:19:02 2024
 
    => Loading Basis Set <=
 
@@ -622,17 +622,17 @@ Scratch directory: /tmp/
 
                            Total Energy        Delta E     RMS |[F,P]|
 
-   @DF-RHF iter SAD:   -75.50772041125666   -7.55077e+01   0.00000e+00 
-   @DF-RHF iter   1:   -75.95376270516428   -4.46042e-01   1.74061e-02 ADIIS/DIIS
-   @DF-RHF iter   2:   -76.00706363301627   -5.33009e-02   9.96851e-03 ADIIS/DIIS
+   @DF-RHF iter SAD:   -75.50772041125663   -7.55077e+01   0.00000e+00 
+   @DF-RHF iter   1:   -75.95376270516427   -4.46042e-01   1.74061e-02 ADIIS/DIIS
+   @DF-RHF iter   2:   -76.00706363301622   -5.33009e-02   9.96851e-03 ADIIS/DIIS
    @DF-RHF iter   3:   -76.02615671349375   -1.90931e-02   1.06884e-03 ADIIS/DIIS
-   @DF-RHF iter   4:   -76.02661223626173   -4.55523e-04   2.10086e-04 ADIIS/DIIS
-   @DF-RHF iter   5:   -76.02663177945176   -1.95432e-05   3.85634e-05 DIIS
-   @DF-RHF iter   6:   -76.02663270868032   -9.29229e-07   6.09957e-06 DIIS
-   @DF-RHF iter   7:   -76.02663273456488   -2.58846e-08   8.53454e-07 DIIS
-   @DF-RHF iter   8:   -76.02663273508931   -5.24423e-10   1.99393e-07 DIIS
-   @DF-RHF iter   9:   -76.02663273512246   -3.31539e-11   3.36929e-08 DIIS
-   @DF-RHF iter  10:   -76.02663273512340   -9.37916e-13   2.78588e-09 DIIS
+   @DF-RHF iter   4:   -76.02661223626168   -4.55523e-04   2.10086e-04 ADIIS/DIIS
+   @DF-RHF iter   5:   -76.02663177945180   -1.95432e-05   3.85634e-05 DIIS
+   @DF-RHF iter   6:   -76.02663270868031   -9.29229e-07   6.09957e-06 DIIS
+   @DF-RHF iter   7:   -76.02663273456491   -2.58846e-08   8.53454e-07 DIIS
+   @DF-RHF iter   8:   -76.02663273508938   -5.24466e-10   1.99393e-07 DIIS
+   @DF-RHF iter   9:   -76.02663273512236   -3.29834e-11   3.36929e-08 DIIS
+   @DF-RHF iter  10:   -76.02663273512334   -9.80549e-13   2.78588e-09 DIIS
   Energy and wave function converged.
 
 
@@ -662,14 +662,14 @@ Scratch directory: /tmp/
     NA   [     5 ]
     NB   [     5 ]
 
-  @DF-RHF Final Energy:   -76.02663273512340
+  @DF-RHF Final Energy:   -76.02663273512334
 
    => Energetics <=
 
     Nuclear Repulsion Energy =              9.1681932964243487
-    One-Electron Energy =                -123.1035071851675440
-    Two-Electron Energy =                  37.9086811536197885
-    Total Energy =                        -76.0266327351233997
+    One-Electron Energy =                -123.1035071851675156
+    Two-Electron Energy =                  37.9086811536198240
+    Total Energy =                        -76.0266327351233429
 
 Computation Completed
 
@@ -693,14 +693,14 @@ Properties computed using the SCF density matrix
 
  ------------------------------------------------------------------------------------
 
-*** tstop() called on b6-14 at Sat Oct 26 00:49:50 2024
+*** tstop() called on b5-23 at Mon Oct 28 10:19:02 2024
 Module time:
-	user time   =       5.44 seconds =       0.09 minutes
-	system time =       0.17 seconds =       0.00 minutes
+	user time   =       6.22 seconds =       0.10 minutes
+	system time =       0.21 seconds =       0.00 minutes
 	total time  =          0 seconds =       0.00 minutes
 Total time:
-	user time   =      66.34 seconds =       1.11 minutes
-	system time =       2.13 seconds =       0.04 minutes
+	user time   =      65.97 seconds =       1.10 minutes
+	system time =       2.09 seconds =       0.03 minutes
 	total time  =          2 seconds =       0.03 minutes
  MINTS: Wrapper to libmints.
    by Justin Turney
@@ -782,22 +782,22 @@ Plugins that use gradients: set Da, Db, and Lagrangian for gradient theory on th
     Maxiter     =        1000
 
     Iteration                   Metric       Residual
-    @Boys    0   1.9461137449497939E-01              -
-    @Boys    1   2.1391633260603959E+00   9.991975E+00
-    @Boys    2   2.5671252000387641E+00   2.000604E-01
-    @Boys    3   2.5730972294806542E+00   2.326349E-03
-    @Boys    4   2.5744157570085751E+00   5.124282E-04
-    @Boys    5   2.5745459338196728E+00   5.056557E-05
-    @Boys    6   2.5745584333546243E+00   4.855044E-06
-    @Boys    7   2.5745601908845908E+00   6.826530E-07
-    @Boys    8   2.5745604133326747E+00   8.640236E-08
-    @Boys    9   2.5745604554936112E+00   1.637597E-08
-    @Boys   10   2.5745604609581241E+00   2.122503E-09
-    @Boys   11   2.5745604619548477E+00   3.871432E-10
-    @Boys   12   2.5745604621267542E+00   6.677120E-11
-    @Boys   13   2.5745604621652660E+00   1.495862E-11
-    @Boys   14   2.5745604621692553E+00   1.549489E-12
-    @Boys   15   2.5745604621701297E+00   3.396353E-13
+    @Boys    0   1.9461137449498334E-01              -
+    @Boys    1   2.1391633260603928E+00   9.991975E+00
+    @Boys    2   2.5671252000387614E+00   2.000604E-01
+    @Boys    3   2.5730972294806511E+00   2.326349E-03
+    @Boys    4   2.5744157570085728E+00   5.124282E-04
+    @Boys    5   2.5745459338196701E+00   5.056557E-05
+    @Boys    6   2.5745584333546216E+00   4.855044E-06
+    @Boys    7   2.5745601908845877E+00   6.826530E-07
+    @Boys    8   2.5745604133326720E+00   8.640236E-08
+    @Boys    9   2.5745604554936081E+00   1.637597E-08
+    @Boys   10   2.5745604609581210E+00   2.122503E-09
+    @Boys   11   2.5745604619548446E+00   3.871432E-10
+    @Boys   12   2.5745604621267510E+00   6.677120E-11
+    @Boys   13   2.5745604621652634E+00   1.495879E-11
+    @Boys   14   2.5745604621692526E+00   1.549489E-12
+    @Boys   15   2.5745604621701270E+00   3.396353E-13
 
     Boys Localizer converged.
 
@@ -853,7 +853,7 @@ Plugins that use gradients: set Da, Db, and Lagrangian for gradient theory on th
 
     Starting semicanonical (non-iterative) LMP2 step...
 
-    PAO-SC-LMP2 Energy:  -0.194977278309
+    PAO-SC-LMP2 Energy:  -0.194977278310
 
     Eliminated Pairs                = 0
     (Initial) Weak Pairs            = 0
@@ -1063,7 +1063,7 @@ Plugins that use gradients: set Da, Db, and Lagrangian for gradient theory on th
   @LCCSD iter   2:  -0.213197355305 -9.721e-04  3.577e-04  2.837e-04        0
   @LCCSD iter   3:  -0.213426661141 -2.293e-04  2.211e-04  8.289e-05        0
   @LCCSD iter   4:  -0.213477074827 -5.041e-05  9.858e-05  2.719e-05        0
-  @LCCSD iter   5:  -0.213488606944 -1.153e-05  3.189e-05  1.093e-05        0
+  @LCCSD iter   5:  -0.213488606945 -1.153e-05  3.189e-05  1.093e-05        0
   @LCCSD iter   6:  -0.213489688528 -1.082e-06  2.997e-05  3.293e-06        0
   @LCCSD iter   7:  -0.213490211890 -5.234e-07  8.849e-06  1.357e-06        0
   @LCCSD iter   8:  -0.213490838000 -6.261e-07  4.944e-06  5.549e-07        0
@@ -1188,25 +1188,25 @@ Plugins that use gradients: set Da, Db, and Lagrangian for gradient theory on th
     R_CONVERGENCE = 1.00e-06
 
                          Corr. Energy    Delta E     Max R     Time (s)
-  @LCCSD(T) iter   1:  -0.003023350543 -3.023e-03  9.690e-05        0
-  @LCCSD(T) iter   2:  -0.003064498507 -4.115e-05  2.112e-05        0
-  @LCCSD(T) iter   3:  -0.003063168134  1.330e-06  5.704e-06        0
-  @LCCSD(T) iter   4:  -0.003063833898 -6.658e-07  2.363e-06        0
-  @LCCSD(T) iter   5:  -0.003063800462  3.344e-08  9.599e-07        0
+  @LCCSD(T) iter   1:  -0.003023115185 -3.023e-03  9.690e-05        0
+  @LCCSD(T) iter   2:  -0.003064464738 -4.135e-05  2.112e-05        0
+  @LCCSD(T) iter   3:  -0.003063150449  1.314e-06  5.702e-06        0
+  @LCCSD(T) iter   4:  -0.003063816660 -6.662e-07  2.370e-06        0
+  @LCCSD(T) iter   5:  -0.003063783168  3.349e-08  9.726e-07        0
 
     DLPNO-CCSD(T0) energy at looser tolerance:  -0.002911103048
-    DLPNO-CCSD(T)  energy at looser tolerance:  -0.003063800462
-    * Net Iterative (T) contribution:           -0.000152697414
+    DLPNO-CCSD(T)  energy at looser tolerance:  -0.003063783168
+    * Net Iterative (T) contribution:           -0.000152680120
 
   
-  Total DLPNO-CCSD(T) Correlation Energy:  -0.216559101904 
+  Total DLPNO-CCSD(T) Correlation Energy:  -0.216559084610 
     DLPNO-CCSD Contribution:               -0.213492280517 
-    DLPNO-(T) Contribution:                -0.003066821387 
+    DLPNO-(T) Contribution:                -0.003066804093 
     Screened Triplets Contribution:         0.000000000000 
     Andy Jiang... FOR THREEEEEEEEEEE!!!
 
 
-  @Total DLPNO-CCSD(T) Energy: -76.243191837027 
+  @Total DLPNO-CCSD(T) Energy: -76.243191819734 
    --------------------------------------------
                     DLPNO-CCSDT                
                    by Andy Jiang               
@@ -1238,32 +1238,32 @@ Plugins that use gradients: set Da, Db, and Lagrangian for gradient theory on th
     R_CONVERGENCE = 1.00e-06
 
                        Corr. Energy    Delta E     Max R1     Max R2     Max R3     Time (s)
-  @LCCSDT iter   1:  -0.216293670180 -2.163e-01  4.418e-04  2.933e-04  5.648e-05        0
-  @LCCSDT iter   2:  -0.216441922751 -1.483e-04  2.155e-04  8.604e-05  2.314e-05        0
-  @LCCSDT iter   3:  -0.216638489571 -1.966e-04  9.024e-05  3.739e-05  1.027e-05        0
-  @LCCSDT iter   4:  -0.216666196458 -2.771e-05  6.501e-05  1.926e-05  5.451e-06        1
-  @LCCSDT iter   5:  -0.216702580817 -3.638e-05  2.153e-05  1.103e-05  2.738e-06        0
-  @LCCSDT iter   6:  -0.216706327135 -3.746e-06  2.165e-05  6.197e-06  1.809e-06        0
-  @LCCSDT iter   7:  -0.216716163608 -9.836e-06  6.415e-06  5.272e-06  9.796e-07        0
-  @LCCSDT iter   8:  -0.216715904295  2.593e-07  8.902e-06  3.135e-06  7.135e-07        1
-  @LCCSDT iter   9:  -0.216719427968 -3.524e-06  3.007e-06  2.937e-06  4.432e-07        0
-  @LCCSDT iter  10:  -0.216718691756  7.362e-07  4.068e-06  1.868e-06  3.706e-07        0
-  @LCCSDT iter  11:  -0.216720252497 -1.561e-06  1.502e-06  1.771e-06  2.617e-07        1
-  @LCCSDT iter  12:  -0.216719640330  6.122e-07  1.998e-06  1.234e-06  2.311e-07        0
-  @LCCSDT iter  13:  -0.216720443121 -8.028e-07  7.981e-07  1.111e-06  1.824e-07        0
-  @LCCSDT iter  14:  -0.216720010230  4.329e-07  1.046e-06  8.212e-07  1.533e-07        0
-  @LCCSDT iter  15:  -0.216720465104 -4.549e-07  4.491e-07  7.096e-07  1.281e-07        1
+  @LCCSDT iter   1:  -0.216293654209 -2.163e-01  4.418e-04  2.933e-04  5.647e-05        0
+  @LCCSDT iter   2:  -0.216441911671 -1.483e-04  2.155e-04  8.604e-05  2.314e-05        1
+  @LCCSDT iter   3:  -0.216638475661 -1.966e-04  9.024e-05  3.739e-05  1.027e-05        0
+  @LCCSDT iter   4:  -0.216666185673 -2.771e-05  6.500e-05  1.926e-05  5.449e-06        0
+  @LCCSDT iter   5:  -0.216702568993 -3.638e-05  2.154e-05  1.103e-05  2.738e-06        1
+  @LCCSDT iter   6:  -0.216706316649 -3.748e-06  2.165e-05  6.197e-06  1.807e-06        0
+  @LCCSDT iter   7:  -0.216716152423 -9.836e-06  6.413e-06  5.271e-06  9.790e-07        0
+  @LCCSDT iter   8:  -0.216715893825  2.586e-07  8.898e-06  3.134e-06  7.126e-07        1
+  @LCCSDT iter   9:  -0.216719417029 -3.523e-06  3.006e-06  2.936e-06  4.426e-07        0
+  @LCCSDT iter  10:  -0.216718681240  7.358e-07  4.067e-06  1.867e-06  3.700e-07        0
+  @LCCSDT iter  11:  -0.216720241671 -1.560e-06  1.502e-06  1.771e-06  2.609e-07        1
+  @LCCSDT iter  12:  -0.216719629766  6.119e-07  1.997e-06  1.234e-06  2.307e-07        0
+  @LCCSDT iter  13:  -0.216720432354 -8.026e-07  7.977e-07  1.110e-06  1.819e-07        0
+  @LCCSDT iter  14:  -0.216719999632  4.327e-07  1.046e-06  8.210e-07  1.530e-07        0
+  @LCCSDT iter  15:  -0.216720454372 -4.547e-07  4.489e-07  7.094e-07  1.277e-07        1
   
-  Total DLPNO-CCSDT Correlation Energy:  -0.216724582676 
-    LCCSDT Correlation Energy:           -0.216720465104 
+  Total DLPNO-CCSDT Correlation Energy:  -0.216724571943 
+    LCCSDT Correlation Energy:           -0.216720454372 
     Full (T) - Iterative (T) Diff:       -0.000003020925 
     Net non-strong pair contributions:   -0.000001096646 
     Andy Jiang... FOR THREEEEEEEEEEE!!!
 
 
-  @Total DLPNO-CCSDT Energy: -76.243357317799 
+  @Total DLPNO-CCSDT Energy: -76.243357307067 
 
-    Psi4 stopped on: Saturday, 26 October 2024 12:49AM
-    Psi4 wall time for execution: 0:00:06.67
+    Psi4 stopped on: Monday, 28 October 2024 10:19AM
+    Psi4 wall time for execution: 0:00:07.35
 
 *** Psi4 exiting successfully. Buy a developer a beer!

@@ -1,6 +1,6 @@
-2024-10-26:00:49:48,562 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'CLEAR_CCSD_INTEGRALS': 0, 'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'FALSE', 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'function_kwargs': {}}
-2024-10-26:00:49:48,565 INFO     [psi4.driver.driver:523] Compute energy(): method=cc3, basis=cc-pvdz, molecule=default, nre=9.168193296424349
-2024-10-26:00:49:50,617 INFO     [psi4.driver.driver:526] Return energy(): -76.24325719481821
-2024-10-26:00:49:50,634 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'CLEAR_CCSD_INTEGRALS': 0, 'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'FALSE', 'SCF__INTS_TOLERANCE': 1e-12, 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'CCTRANSORT__WFN': 'CC3', 'function_kwargs': {}}
-2024-10-26:00:49:50,636 INFO     [psi4.driver.driver:523] Compute energy(): method=dlpno_ccsdt_q, basis=cc-pvdz, molecule=default, nre=9.168193296424349
-2024-10-26:00:49:55,192 INFO     [psi4.driver.driver:526] Return energy(): -76.0266327351234
+2024-10-28:10:19:00,4 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'CLEAR_CCSD_INTEGRALS': 0, 'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'FALSE', 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'function_kwargs': {}}
+2024-10-28:10:19:00,7 INFO     [psi4.driver.driver:523] Compute energy(): method=cc3, basis=cc-pvdz, molecule=default, nre=9.168193296424349
+2024-10-28:10:19:01,992 INFO     [psi4.driver.driver:526] Return energy(): -76.24325719481824
+2024-10-28:10:19:02,12 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'CLEAR_CCSD_INTEGRALS': 0, 'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'FALSE', 'SCF__INTS_TOLERANCE': 1e-12, 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'CCTRANSORT__WFN': 'CC3', 'function_kwargs': {}}
+2024-10-28:10:19:02,15 INFO     [psi4.driver.driver:523] Compute energy(): method=dlpno_ccsdt_q, basis=cc-pvdz, molecule=default, nre=9.168193296424349
+2024-10-28:10:19:07,309 INFO     [psi4.driver.driver:526] Return energy(): -76.02663273512334
