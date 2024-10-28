@@ -1430,6 +1430,9 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         einsum(0.0, Indices{index::l, index::d, index::m, index::e}, &K_ldme, 1.0, Indices{index::Q, index::l, index::d}, q_ov_[ijk], Indices{index::Q, index::m, index::e}, q_ov_[ijk]);
         Tensor<double, 4> K_ldme_T("K_ldme_T", nlmo_ijk, nlmo_ijk, ntno_ijk, ntno_ijk);
         sort(Indices{index::l, index::m, index::d, index::e}, &K_ldme_T, Indices{index::l, index::d, index::m, index::e}, K_ldme);
+        Tensor<double, 4> K_ldme_T2("K_ldme_T2", nlmo_ijk, ntno_ijk, nlmo_ijk, ntno_ijk);
+        sort(Indices{index::l, index::e, index::m, index::d}, &K_ldme_T2, Indices{index::l, index::d, index::m, index::e}, K_ldme);
+
 
         Tensor<double, 4> chi_dbec_temp("chi_dbec_temp", ntno_ijk, ntno_ijk, ntno_ijk, ntno_ijk);
         einsum(0.0, Indices{index::d, index::e, index::b, index::c}, &chi_dbec_temp, 1.0, Indices{index::l, index::m, index::d, index::e}, K_ldme_T, Indices{index::l, index::m, index::b, index::c}, T_lm);
@@ -1450,24 +1453,26 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         for (int idx = 0; idx < ijk_idx.size(); ++idx) {
             int i = ijk_idx[idx];
 
-            chi_dali_list[idx] = Tensor<double, 3>("chi_dali_temp", ntno_ijk, ntno_ijk, nlmo_ijk);
+            chi_dali_list[idx] = Tensor<double, 3>("chi_dali", ntno_ijk, ntno_ijk, nlmo_ijk);
             einsum(0.0, Indices{index::d, index::a, index::l}, &chi_dali_list[idx], 1.0, Indices{index::Q, index::d, index::a}, q_vv_t1, Indices{index::Q, index::l}, q_io_t1_list[idx]);
 
-            Tensor<double, 3> T_mi("T_mi", nlmo_ijk, ntno_ijk, ntno_ijk);
+            Tensor<double, 3> T_im("T_im", nlmo_ijk, ntno_ijk, ntno_ijk);
             for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
                 int m = lmotriplet_to_lmos_[ijk][m_ijk];
-                int mi = i_j_to_ij_[m][i];
+                int im = i_j_to_ij_[i][m];
 
-                auto S_ijk_mi = submatrix_cols(*S_ijk, lmopair_to_paos_[mi]);
-                S_ijk_mi = linalg::doublet(S_ijk_mi, X_pno_[mi], false, false);
+                auto S_ijk_im = submatrix_cols(*S_ijk, lmopair_to_paos_[im]);
+                S_ijk_im = linalg::doublet(S_ijk_im, X_pno_[im], false, false);
 
-                auto T_mi_ijk = linalg::triplet(S_ijk_mi, T_iajb_[mi], S_ijk_mi, false, false, true);
-                ::memcpy(&T_mi(m_ijk, 0, 0), T_mi_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
+                auto T_im_ijk = linalg::triplet(S_ijk_im, T_iajb_[im], S_ijk_im, false, false, true);
+                ::memcpy(&T_im(m_ijk, 0, 0), T_im_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
             }
 
-            // TODO: Optimize for potential DGEMM
-            // Ecclesiastes 1:2
-            einsum(1.0, Indices{index::d, index::a, index::l}, &chi_dali_list[idx], -1.0, Indices{index::m, index::d, index::l, index::e}, K_ldme, Indices{index::m, index::a, index::e}, T_mi);
+            Tensor<double, 3> chi_dali_temp("chi_dali_temp", nlmo_ijk, ntno_ijk, ntno_ijk);
+            einsum(0.0, Indices{index::l, index::d, index::a}, &chi_dali_temp, 1.0, Indices{index::m, index::e, index::l, index::d}, K_ldme_T2, Indices{index::m, index::e, index::a}, T_im);
+            Tensor<double, 3> chi_dali_temp2("chi_dali_temp2", ntno_ijk, ntno_ijk, nlmo_ijk);
+            sort(Indices{index::d, index::a, index::l}, &chi_dali_temp2, Indices{index::l, index::d, index::a}, chi_dali_temp);
+            chi_dali_list[idx] -= chi_dali_temp2;
         }
 
         // outfile->Printf("But I have eternity to try\n");
@@ -1477,28 +1482,32 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         for (int idx = 0; idx < ijk_idx.size(); ++idx) {
             int i = ijk_idx[idx];
 
-            chi_aidl_list[idx] = Tensor<double, 3>("chi_aidl_temp", ntno_ijk, ntno_ijk, nlmo_ijk);
+            chi_aidl_list[idx] = Tensor<double, 3>("chi_aidl", ntno_ijk, ntno_ijk, nlmo_ijk);
             einsum(0.0, Indices{index::a, index::d, index::l}, &chi_aidl_list[idx], 1.0, Indices{index::Q, index::a}, q_iv_t1_list[idx], Indices{index::Q, index::d, index::l}, q_vo);
 
-            Tensor<double, 3> T_im("T_im", nlmo_ijk, ntno_ijk, ntno_ijk);
-            Tensor<double, 3> U_im("U_im", nlmo_ijk, ntno_ijk, ntno_ijk);
+            Tensor<double, 3> T_mi("T_mi", nlmo_ijk, ntno_ijk, ntno_ijk);
+            Tensor<double, 3> U_mi("U_mi", nlmo_ijk, ntno_ijk, ntno_ijk);
             for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
                 int m = lmotriplet_to_lmos_[ijk][m_ijk];
-                int im = i_j_to_ij_[i][m];
+                int mi = i_j_to_ij_[m][i];
 
-                auto S_ijk_im = submatrix_cols(*S_ijk, lmopair_to_paos_[im]);
-                S_ijk_im = linalg::doublet(S_ijk_im, X_pno_[im], false, false);
+                auto S_ijk_mi = submatrix_cols(*S_ijk, lmopair_to_paos_[mi]);
+                S_ijk_mi = linalg::doublet(S_ijk_mi, X_pno_[mi], false, false);
 
-                auto T_im_ijk = linalg::triplet(S_ijk_im, T_iajb_[im], S_ijk_im, false, false, true);
-                auto U_im_ijk = linalg::triplet(S_ijk_im, Tt_iajb_[im], S_ijk_im, false, false, true);
-                ::memcpy(&T_im(m_ijk, 0, 0), T_im_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
-                ::memcpy(&U_im(m_ijk, 0, 0), U_im_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
+                auto T_mi_ijk = linalg::triplet(S_ijk_mi, T_iajb_[mi], S_ijk_mi, false, false, true);
+                auto U_mi_ijk = linalg::triplet(S_ijk_mi, Tt_iajb_[mi], S_ijk_mi, false, false, true);
+                ::memcpy(&T_mi(m_ijk, 0, 0), T_mi_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
+                ::memcpy(&U_mi(m_ijk, 0, 0), U_mi_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
             }
+
+            Tensor<double, 3> chi_aidl_temp("chi_aidl_temp", nlmo_ijk, ntno_ijk, ntno_ijk);
             // (l, e, m, d) (m, a, e) => (a, d, l)
-            einsum(1.0, Indices{index::a, index::d, index::l}, &chi_aidl_list[idx], -1.0, Indices{index::l, index::e, index::m, index::d}, K_ldme, Indices{index::m, index::a, index::e}, T_im);
-            
+            einsum(0.0, Indices{index::l, index::d, index::a}, &chi_aidl_temp, -1.0, Indices{index::l, index::d, index::m, index::e}, K_ldme_T2, Indices{index::m, index::e, index::a}, T_mi);
             // (l, d, m, e) (m, a, e) => (a, d, l)
-            einsum(1.0, Indices{index::a, index::d, index::l}, &chi_aidl_list[idx], 1.0, Indices{index::l, index::d, index::m, index::e}, K_ldme, Indices{index::m, index::a, index::e}, U_im);
+            einsum(1.0, Indices{index::l, index::d, index::a}, &chi_aidl_temp, 1.0, Indices{index::l, index::d, index::m, index::e}, K_ldme, Indices{index::m, index::e, index::a}, U_mi);
+            Tensor<double, 3> chi_aidl_temp2("chi_aidl_temp2", ntno_ijk, ntno_ijk, nlmo_ijk);
+            sort(Indices{index::a, index::d, index::l}, &chi_aidl_temp2, Indices{index::l, index::d, index::a}, chi_aidl_temp);
+            chi_aidl_list[idx] += chi_aidl_temp2;
         }
 
         // outfile->Printf("Praise to the Lord\n");

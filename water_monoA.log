@@ -1,3 +1,3 @@
-2024-10-28:14:06:41,854 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'CLEAR_CCSD_INTEGRALS': 0, 'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'TRUE', 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'function_kwargs': {}}
-2024-10-28:14:06:41,856 INFO     [psi4.driver.driver:523] Compute energy(): method=dlpno_ccsdt_q, basis=cc-pvdz, molecule=default, nre=9.163830181985562
-2024-10-28:14:06:45,663 INFO     [psi4.driver.driver:526] Return energy(): -76.0269304593097
+2024-10-28:15:30:26,25 INFO     [psi4.driver.task_planner:285] PLANNING Atomic:  keywords={'CLEAR_CCSD_INTEGRALS': 0, 'DF_BASIS_MP2': 'CC-PVDZ-RI', 'E_CONVERGENCE': 1e-06, 'FREEZE_CORE': 'TRUE', 'MP2_TYPE': 'DF', 'PNO_CONVERGENCE': 'TIGHT', 'R_CONVERGENCE': 1e-06, 'SCF_TYPE': 'DF', 'function_kwargs': {}}
+2024-10-28:15:30:26,28 INFO     [psi4.driver.driver:523] Compute energy(): method=dlpno_ccsdt_q, basis=cc-pvdz, molecule=default, nre=9.163830181985562
+2024-10-28:15:30:29,588 INFO     [psi4.driver.driver:526] Return energy(): -76.02693045930965
