@@ -31,9 +31,9 @@
     -----------------------------------------------------------------------
 
 
-    Psi4 started on: Monday, 28 October 2024 03:49PM
+    Psi4 started on: Monday, 28 October 2024 04:10PM
 
-    Process ID: 125310
+    Process ID: 125711
     Host:       b6-13
     PSIDATADIR: /home/aj48384/github/psi4/objdir_p4sums/stage/share/psi4
     Memory:     500.0 MiB
@@ -90,7 +90,7 @@ Scratch directory: /tmp/
     Solid Harmonics ordering:            Gaussian
 
 *** tstart() called on b6-13
-*** at Mon Oct 28 15:49:31 2024
+*** at Mon Oct 28 16:10:55 2024
 
    => Loading Basis Set <=
 
@@ -214,17 +214,17 @@ Scratch directory: /tmp/
 
                            Total Energy        Delta E     RMS |[F,P]|
 
-   @DF-RHF iter SAD:   -75.50719280796714   -7.55072e+01   0.00000e+00 
-   @DF-RHF iter   1:   -75.95402117276818   -4.46828e-01   8.70043e-03 ADIIS/DIIS
-   @DF-RHF iter   2:   -76.00719082303850   -5.31697e-02   5.00490e-03 ADIIS/DIIS
-   @DF-RHF iter   3:   -76.02650032196421   -1.93095e-02   4.78532e-04 ADIIS/DIIS
-   @DF-RHF iter   4:   -76.02690970282976   -4.09381e-04   1.05192e-04 ADIIS/DIIS
-   @DF-RHF iter   5:   -76.02692949098997   -1.97882e-05   1.93410e-05 DIIS
-   @DF-RHF iter   6:   -76.02693043247679   -9.41487e-07   3.07657e-06 DIIS
-   @DF-RHF iter   7:   -76.02693045876207   -2.62853e-08   4.24752e-07 DIIS
-   @DF-RHF iter   8:   -76.02693045927614   -5.14078e-10   9.91633e-08 DIIS
-   @DF-RHF iter   9:   -76.02693045930896   -3.28129e-11   1.75122e-08 DIIS
-   @DF-RHF iter  10:   -76.02693045930965   -6.96332e-13   1.42806e-09 DIIS
+   @DF-RHF iter SAD:   -75.50719280796720   -7.55072e+01   0.00000e+00 
+   @DF-RHF iter   1:   -75.95402117276822   -4.46828e-01   8.70043e-03 ADIIS/DIIS
+   @DF-RHF iter   2:   -76.00719082303858   -5.31697e-02   5.00490e-03 ADIIS/DIIS
+   @DF-RHF iter   3:   -76.02650032196418   -1.93095e-02   4.78532e-04 ADIIS/DIIS
+   @DF-RHF iter   4:   -76.02690970282978   -4.09381e-04   1.05192e-04 ADIIS/DIIS
+   @DF-RHF iter   5:   -76.02692949098999   -1.97882e-05   1.93410e-05 DIIS
+   @DF-RHF iter   6:   -76.02693043247672   -9.41487e-07   3.07657e-06 DIIS
+   @DF-RHF iter   7:   -76.02693045876205   -2.62853e-08   4.24752e-07 DIIS
+   @DF-RHF iter   8:   -76.02693045927609   -5.14035e-10   9.91633e-08 DIIS
+   @DF-RHF iter   9:   -76.02693045930893   -3.28413e-11   1.75122e-08 DIIS
+   @DF-RHF iter  10:   -76.02693045930957   -6.39488e-13   1.42806e-09 DIIS
   Energy and wave function converged.
 
 
@@ -262,14 +262,14 @@ Scratch directory: /tmp/
     NA   [     5 ]
     NB   [     5 ]
 
-  @DF-RHF Final Energy:   -76.02693045930965
+  @DF-RHF Final Energy:   -76.02693045930957
 
    => Energetics <=
 
     Nuclear Repulsion Energy =              9.1638301819855617
-    One-Electron Energy =                -123.0897541905356718
-    Two-Electron Energy =                  37.8989935492404513
-    Total Energy =                        -76.0269304593096535
+    One-Electron Energy =                -123.0897541905356007
+    Two-Electron Energy =                  37.8989935492404726
+    Total Energy =                        -76.0269304593095683
 
 Computation Completed
 
@@ -293,15 +293,15 @@ Properties computed using the SCF density matrix
 
  ------------------------------------------------------------------------------------
 
-*** tstop() called on b6-13 at Mon Oct 28 15:49:32 2024
+*** tstop() called on b6-13 at Mon Oct 28 16:10:55 2024
 Module time:
-	user time   =      12.03 seconds =       0.20 minutes
-	system time =       0.69 seconds =       0.01 minutes
-	total time  =          1 seconds =       0.02 minutes
+	user time   =      13.78 seconds =       0.23 minutes
+	system time =       0.67 seconds =       0.01 minutes
+	total time  =          0 seconds =       0.00 minutes
 Total time:
-	user time   =      12.03 seconds =       0.20 minutes
-	system time =       0.69 seconds =       0.01 minutes
-	total time  =          1 seconds =       0.02 minutes
+	user time   =      13.78 seconds =       0.23 minutes
+	system time =       0.67 seconds =       0.01 minutes
+	total time  =          0 seconds =       0.00 minutes
  MINTS: Wrapper to libmints.
    by Justin Turney
 
@@ -382,22 +382,22 @@ Plugins that use gradients: set Da, Db, and Lagrangian for gradient theory on th
     Maxiter     =        1000
 
     Iteration                   Metric       Residual
-    @Boys    0   2.9788972976156359E+01              -
-    @Boys    1   3.1831616996795255E+01   6.857047E-02
-    @Boys    2   3.2120204912098160E+01   9.066078E-03
-    @Boys    3   3.2155889911605321E+01   1.110983E-03
-    @Boys    4   3.2160431747098180E+01   1.412443E-04
-    @Boys    5   3.2160762025897426E+01   1.026973E-05
-    @Boys    6   3.2160824638239475E+01   1.946855E-06
-    @Boys    7   3.2160833631548947E+01   2.796355E-07
-    @Boys    8   3.2160835261793586E+01   5.069037E-08
-    @Boys    9   3.2160835474147341E+01   6.602868E-09
-    @Boys   10   3.2160835535532151E+01   1.908682E-09
-    @Boys   11   3.2160835541997777E+01   2.010404E-10
-    @Boys   12   3.2160835543460450E+01   4.547996E-11
-    @Boys   13   3.2160835543702753E+01   7.534076E-12
-    @Boys   14   3.2160835543739957E+01   1.156811E-12
-    @Boys   15   3.2160835543744710E+01   1.478050E-13
+    @Boys    0   2.9788972976156334E+01              -
+    @Boys    1   3.1831616996795209E+01   6.857047E-02
+    @Boys    2   3.2120204912098103E+01   9.066078E-03
+    @Boys    3   3.2155889911605279E+01   1.110983E-03
+    @Boys    4   3.2160431747098130E+01   1.412443E-04
+    @Boys    5   3.2160762025897384E+01   1.026973E-05
+    @Boys    6   3.2160824638239433E+01   1.946855E-06
+    @Boys    7   3.2160833631548904E+01   2.796355E-07
+    @Boys    8   3.2160835261793537E+01   5.069037E-08
+    @Boys    9   3.2160835474147284E+01   6.602868E-09
+    @Boys   10   3.2160835535532101E+01   1.908682E-09
+    @Boys   11   3.2160835541997734E+01   2.010406E-10
+    @Boys   12   3.2160835543460408E+01   4.547996E-11
+    @Boys   13   3.2160835543702710E+01   7.534076E-12
+    @Boys   14   3.2160835543739907E+01   1.156590E-12
+    @Boys   15   3.2160835543744668E+01   1.480259E-13
 
     Boys Localizer converged.
 
@@ -786,23 +786,23 @@ Plugins that use gradients: set Da, Db, and Lagrangian for gradient theory on th
     R_CONVERGENCE = 1.00e-06
 
                          Corr. Energy    Delta E     Max R     Time (s)
-  @LCCSD(T) iter   1:  -0.003071224253 -3.071e-03  2.461e-05        0
-  @LCCSD(T) iter   2:  -0.003088332939 -1.711e-05  3.949e-06        0
-  @LCCSD(T) iter   3:  -0.003088865101 -5.322e-07  8.023e-07        0
+  @LCCSD(T) iter   1:  -0.003070886248 -3.071e-03  2.461e-05        0
+  @LCCSD(T) iter   2:  -0.003088352186 -1.747e-05  3.959e-06        0
+  @LCCSD(T) iter   3:  -0.003088862099 -5.099e-07  8.228e-07        0
 
     DLPNO-CCSD(T0) energy at looser tolerance:  -0.002971492093
-    DLPNO-CCSD(T)  energy at looser tolerance:  -0.003088865101
-    * Net Iterative (T) contribution:           -0.000117373008
+    DLPNO-CCSD(T)  energy at looser tolerance:  -0.003088862099
+    * Net Iterative (T) contribution:           -0.000117370006
 
   
-  Total DLPNO-CCSD(T) Correlation Energy:  -0.214886861938 
+  Total DLPNO-CCSD(T) Correlation Energy:  -0.214886858937 
     DLPNO-CCSD Contribution:               -0.211793904986 
-    DLPNO-(T) Contribution:                -0.003092956953 
+    DLPNO-(T) Contribution:                -0.003092953951 
     Screened Triplets Contribution:         0.000000000000 
     Andy Jiang... FOR THREEEEEEEEEEE!!!
 
 
-  @Total DLPNO-CCSD(T) Energy: -76.241817321248 
+  @Total DLPNO-CCSD(T) Energy: -76.241817318246 
    --------------------------------------------
                     DLPNO-CCSDT                
                    by Andy Jiang               
@@ -834,19 +834,19 @@ Plugins that use gradients: set Da, Db, and Lagrangian for gradient theory on th
     R_CONVERGENCE = 1.00e-06
 
                        Corr. Energy    Delta E     Max R1     Max R2     Max R3     Time (s)
-  @LCCSDT iter   1:  -0.214666065659 -2.147e-01  4.338e-04  2.773e-04  5.269e-05        0
-  @LCCSDT iter   2:  -0.214790722690 -1.247e-04  1.369e-04  5.441e-05  2.181e-05        1
-  @LCCSDT iter   3:  -0.215012785917 -2.221e-04  5.631e-05  3.531e-05  7.269e-06        0
-  @LCCSDT iter   4:  -0.215043805520 -3.102e-05  2.092e-05  9.760e-06  2.646e-06        0
-  @LCCSDT iter   5:  -0.215048119763 -4.314e-06  8.683e-06  5.301e-06  1.140e-06        1
-  @LCCSDT iter   6:  -0.215047979409  1.404e-07  3.396e-06  1.779e-06  3.825e-07        0
-  @LCCSDT iter   7:  -0.215048855437 -8.760e-07  1.644e-06  8.384e-07  1.365e-07        0
-  @LCCSDT iter   8:  -0.215048531564  3.239e-07  8.301e-07  2.993e-07  6.285e-08        1
+  @LCCSDT iter   1:  -0.214666062409 -2.147e-01  4.338e-04  2.773e-04  5.270e-05        0
+  @LCCSDT iter   2:  -0.214790783496 -1.247e-04  1.369e-04  5.442e-05  2.181e-05        0
+  @LCCSDT iter   3:  -0.215012849057 -2.221e-04  5.631e-05  3.531e-05  7.267e-06        0
+  @LCCSDT iter   4:  -0.215043861241 -3.101e-05  2.092e-05  9.760e-06  2.645e-06        0
+  @LCCSDT iter   5:  -0.215048174192 -4.313e-06  8.683e-06  5.302e-06  1.140e-06        0
+  @LCCSDT iter   6:  -0.215048031638  1.426e-07  3.396e-06  1.780e-06  3.824e-07        0
+  @LCCSDT iter   7:  -0.215048907449 -8.758e-07  1.645e-06  8.386e-07  1.362e-07        0
+  @LCCSDT iter   8:  -0.215048583142  3.243e-07  8.304e-07  2.993e-07  6.266e-08        0
 
-  T1 Diagnostic: 0.00589808 
+  T1 Diagnostic: 0.00589807 
   
-  Total DLPNO-CCSDT Correlation Energy:  -0.215056193549 
-    LCCSDT Correlation Energy:           -0.215048531564 
+  Total DLPNO-CCSDT Correlation Energy:  -0.215056245126 
+    LCCSDT Correlation Energy:           -0.215048583142 
     Weak Pair Contribution:               0.000000000000 
     Eliminated Pair MP2 Correction:       0.000000000000 
     Dipole Pair Correction:               0.000000000000 
@@ -855,9 +855,9 @@ Plugins that use gradients: set Da, Db, and Lagrangian for gradient theory on th
     Houston is (still) a delinquent
 
 
-  @Total DLPNO-CCSDT Energy: -76.241986652858 
+  @Total DLPNO-CCSDT Energy: -76.241986704436 
 
-    Psi4 stopped on: Monday, 28 October 2024 03:49PM
-    Psi4 wall time for execution: 0:00:03.58
+    Psi4 stopped on: Monday, 28 October 2024 04:10PM
+    Psi4 wall time for execution: 0:00:01.64
 
 *** Psi4 exiting successfully. Buy a developer a beer!

@@ -182,12 +182,12 @@ void DLPNOCCSDT::estimate_memory() {
         int npao_ijk = lmotriplet_to_paos_[ijk].size();
         int ntno_ijk = n_tno_[ijk];
 
-        K_iojv_memory += 6 * n_lmo_triplets * nlmo_ijk * ntno_ijk;
-        K_ivov_memory += 3 * n_lmo_triplets * nlmo_ijk * ntno_ijk * ntno_ijk;
-        K_ivvv_memory += 3 * n_lmo_triplets * ntno_ijk * ntno_ijk * ntno_ijk;
-        qij_memory += 3 * n_lmo_triplets * naux_ijk * nlmo_ijk;
-        qia_memory += 3 * n_lmo_triplets * naux_ijk * nlmo_ijk * ntno_ijk;
-        qab_memory += n_lmo_triplets * naux_ijk * ntno_ijk * ntno_ijk;
+        K_iojv_memory += 6 * nlmo_ijk * ntno_ijk;
+        K_ivov_memory += 3 * nlmo_ijk * ntno_ijk * ntno_ijk;
+        K_ivvv_memory += 3 * ntno_ijk * ntno_ijk * ntno_ijk;
+        qij_memory += 3 * naux_ijk * nlmo_ijk;
+        qia_memory += 3 * naux_ijk * nlmo_ijk * ntno_ijk;
+        qab_memory += naux_ijk * ntno_ijk * ntno_ijk;
     }
 
     size_t total_memory = K_iojv_memory + K_ivov_memory + K_ivvv_memory + qij_memory + qia_memory + qab_memory;
