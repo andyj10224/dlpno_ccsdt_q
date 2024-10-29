@@ -134,8 +134,10 @@ class DLPNOCCSDT : public DLPNOCCSD_T {
 
     // Singles Amplitudes
     std::vector<Tensor<double, 2>> T_n_ijk_;
+    // Einsums clone of Psi4 T3 amplitudes
+    std::vector<Tensor<double, 3>> T_iajbkc_clone_;
     // Contravariant Triples Amplitudes (from Koch 2020)
-    std::vector<Tensor<double, 3>> T_iajbkc_tilde_;
+    std::vector<Tensor<double, 3>> U_iajbkc_;
 
     // Run CC3 only?
     bool cc3_;
@@ -143,7 +145,12 @@ class DLPNOCCSDT : public DLPNOCCSD_T {
     int nthread_;
     // Energy expression
     double e_lccsdt_;
-    
+
+    /// Helper function for transforming amplitudes from one TNO space to another
+    Tensor<double, 3> matmul_3d_einsums(const Tensor<double, 3> &A, const SharedMatrix &X, int dim_old, int dim_new);
+    /// Helper function for managing permutational symmetry in triples amplitudes
+    Tensor<double, 3> triples_permuter_einsums(const Tensor<double, 3> &X, int i, int j, int k);
+
     /// computes singles residuals in LCCSDT equations
     void compute_R_ia_triples(std::vector<SharedMatrix>& R_ia, std::vector<std::vector<SharedMatrix>>& R_ia_buffer);
     /// compute doubles residuals in LCCSDT equations
@@ -169,6 +176,50 @@ class DLPNOCCSDT : public DLPNOCCSD_T {
 
 DLPNOCCSDT::DLPNOCCSDT(SharedWavefunction ref_wfn, Options& options) : DLPNOCCSD_T(ref_wfn, options) {}
 DLPNOCCSDT::~DLPNOCCSDT() {}
+
+Tensor<double, 3> DLPNOCCSDT::matmul_3d_einsums(const Tensor<double, 3> &A, const SharedMatrix &X, int dim_old, int dim_new) {
+    /* Performs the operation A'[i,j,k] = A[I, J, K] * X[i, I] * X[j, J], X[k, K] for cube 3d tensors */
+
+    // TODO: Change this into a TensorView
+    Tensor<double, 2> Xview("Xview", dim_new, dim_old);
+    ::memcpy(Xview.data(), X->get_pointer(), dim_new * dim_old * sizeof(double));
+
+    Tensor<double, 3> A_new1("A_new1", dim_old, dim_old, dim_new);
+    einsum(0.0, Indices{index::I, index::J, index::k}, &A_new1, 1.0, Indices{index::I, index::J, index::K}, A, Indices{index::k, index::K}, Xview);
+
+    Tensor<double, 3> A_new2("A_new2", dim_old, dim_new, dim_old);
+    sort(Indices{index::I, index::k, index::J}, &A_new2, Indices{index::I, index::J, index::k}, A_new1);
+
+    Tensor<double, 3> A_new3("A_new3", dim_old, dim_new, dim_new);
+    einsum(0.0, Indices{index::I, index::k, index::j}, &A_new3, 1.0, Indices{index::I, index::k, index::J}, A_new2, Indices{index::j, index::J}, Xview);
+
+    Tensor<double, 3> A_new4("A_new4", dim_old, dim_new, dim_new);
+    sort(Indices{index::I, index::j, index::k}, &A_new4, Indices{index::I, index::k, index::j}, A_new3);
+
+    Tensor<double, 3> A_new("A_new", dim_new, dim_new, dim_new);
+    einsum(0.0, Indices{index::i, index::j, index::k}, &A_new, 1.0, Indices{index::i, index::I}, Xview, Indices{index::I, index::j, index::k}, A_new4);
+
+    return A_new;
+}
+
+Tensor<double, 3> DLPNOCCSDT::triples_permuter_einsums(const Tensor<double, 3> &X, int i, int j, int k) {
+    /*- Generates equivalent amplitude T_jik, T_kji, ..., etc. from T_ijk (restricted by index i <= j <= k) -*/
+    Tensor<double, 3> Xperm = X;
+
+    if (i <= k && k <= j && i <= j) {
+        sort(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::a, index::c, index::b}, X);
+    } else if (j <= i && i <= k && j <= k) {
+        sort(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::b, index::a, index::c}, X);
+    } else if (j <= k && k <= i && j <= i) {
+        sort(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::b, index::c, index::a}, X);
+    } else if (k <= i && i <= j && k <= j) {
+        sort(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::c, index::a, index::b}, X);
+    } else if (k <= j && j <= i && k <= i) {
+        sort(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::c, index::b, index::a}, X);
+    }
+
+    return Xperm;
+}
 
 void DLPNOCCSDT::print_header() {
     double t_cut_tno = options_.get_double("T_CUT_TNO");
@@ -709,15 +760,15 @@ void DLPNOCCSDT::compute_R_ia_triples(std::vector<SharedMatrix>& R_ia, std::vect
             auto &[i, j, k] = P_S[perm_idx];
             int ii = i_j_to_ij_[i][i];
             
-            Tensor<double, 3> T_ijk_tilde = T_iajbkc_tilde_[ijk];
+            Tensor<double, 3> U_ijk = U_iajbkc_[ijk];
             if (perm_idx == 1) {
-                sort(Indices{index::b, index::a, index::c}, &T_ijk_tilde, Indices{index::a, index::b, index::c}, T_iajbkc_tilde_[ijk]);
+                sort(Indices{index::b, index::a, index::c}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (perm_idx == 2) {
-                sort(Indices{index::c, index::a, index::b}, &T_ijk_tilde, Indices{index::a, index::b, index::c}, T_iajbkc_tilde_[ijk]);
+                sort(Indices{index::c, index::a, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             }
 
             Tensor<double, 1> R_ia_cont("R_ia_cont", n_tno_[ijk]);
-            einsum(0.0, Indices{index::a}, &R_ia_cont, prefactor, Indices{index::a, index::b, index::c}, T_ijk_tilde, Indices{index::b, index::c}, K_ovov_list[perm_idx]);
+            einsum(0.0, Indices{index::a}, &R_ia_cont, prefactor, Indices{index::a, index::b, index::c}, U_ijk, Indices{index::b, index::c}, K_ovov_list[perm_idx]);
 
             auto R_ia_psi = std::make_shared<Matrix>(n_tno_[ijk], 1);
             ::memcpy(R_ia_psi->get_pointer(), &(R_ia_cont)(0, 0), n_tno_[ijk] * sizeof(double));
@@ -799,14 +850,14 @@ void DLPNOCCSDT::compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::
             einsum(0.0, Indices{index::c}, &Fkc, 2.0, Indices{index::l, index::d, index::c}, K_kvov_list[idx], Indices{index::l, index::d}, T_n_ijk_[ijk]);
             einsum(1.0, Indices{index::c}, &Fkc, -1.0, Indices{index::l, index::d, index::c}, K_lckd, Indices{index::l, index::d}, T_n_ijk_[ijk]);
 
-            auto T_ijk_tilde = T_iajbkc_tilde_[ijk];
+            auto U_ijk = U_iajbkc_[ijk];
             if (idx == 1) {
-                sort(Indices{index::a, index::c, index::b}, &T_ijk_tilde, Indices{index::a, index::b, index::c}, T_iajbkc_tilde_[ijk]);
+                sort(Indices{index::a, index::c, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (idx == 2) {
-                sort(Indices{index::b, index::c, index::a}, &T_ijk_tilde, Indices{index::a, index::b, index::c}, T_iajbkc_tilde_[ijk]);
+                sort(Indices{index::b, index::c, index::a}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             }
             
-            einsum(0.0, Indices{index::a, index::b}, &R_iajb_cont_a, prefactor, Indices{index::a, index::b, index::c}, T_ijk_tilde, Indices{index::c}, Fkc);
+            einsum(0.0, Indices{index::a, index::b}, &R_iajb_cont_a, prefactor, Indices{index::a, index::b, index::c}, U_ijk, Indices{index::c}, Fkc);
             ::memcpy(psi_buffer->get_pointer(), R_iajb_cont_a.data(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
 
             R_iajb_buffer[thread][ij]->add(linalg::triplet(S_ijk_ij_list[idx], psi_buffer, S_ijk_ij_list[idx], true, false, false));
@@ -838,17 +889,17 @@ void DLPNOCCSDT::compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::
             auto &[i, j, k] = perms[idx];
             int ij = i_j_to_ij_[i][j];
 
-            auto T_ijk_tilde = T_iajbkc_tilde_[ijk];
+            auto U_ijk = U_iajbkc_[ijk];
             if (idx == 1) {
-                sort(Indices{index::a, index::c, index::b}, &T_ijk_tilde, Indices{index::a, index::b, index::c}, T_iajbkc_tilde_[ijk]);
+                sort(Indices{index::a, index::c, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (idx == 2) {
-                sort(Indices{index::b, index::a, index::c}, &T_ijk_tilde, Indices{index::a, index::b, index::c}, T_iajbkc_tilde_[ijk]);
+                sort(Indices{index::b, index::a, index::c}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (idx == 3) {
-                sort(Indices{index::b, index::c, index::a}, &T_ijk_tilde, Indices{index::a, index::b, index::c}, T_iajbkc_tilde_[ijk]);
+                sort(Indices{index::b, index::c, index::a}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (idx == 4) {
-                sort(Indices{index::c, index::a, index::b}, &T_ijk_tilde, Indices{index::a, index::b, index::c}, T_iajbkc_tilde_[ijk]);
+                sort(Indices{index::c, index::a, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (idx == 5) {
-                sort(Indices{index::c, index::b, index::a}, &T_ijk_tilde, Indices{index::a, index::b, index::c}, T_iajbkc_tilde_[ijk]);
+                sort(Indices{index::c, index::b, index::a}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             }
 
             // (T1-dressed integral g_jlkc)
@@ -863,11 +914,11 @@ void DLPNOCCSDT::compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::
                         Indices{index::l, index::b, index::c}, K_kvov_list[idx]);
 
             // g_jlkc contribution
-            einsum(0.0, Indices{index::l, index::a, index::b}, &R_iajb_cont_b, prefactor, Indices{index::a, index::b, index::c}, T_ijk_tilde, 
+            einsum(0.0, Indices{index::l, index::a, index::b}, &R_iajb_cont_b, prefactor, Indices{index::a, index::b, index::c}, U_ijk, 
                     Indices{index::l, index::c}, g_jlkc);
 
             // g_dbkc contribution
-            einsum(0.0, Indices{index::a, index::d}, &R_iajb_cont_a, prefactor, Indices{index::a, index::b, index::c}, T_ijk_tilde, 
+            einsum(0.0, Indices{index::a, index::d}, &R_iajb_cont_a, prefactor, Indices{index::a, index::b, index::c}, U_ijk, 
                         Indices{index::d, index::b, index::c}, g_dbkc);
 
             // Flush buffers (unfortunately we need to copy to Psi for now, this is NOT ideal)
@@ -1383,9 +1434,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             rho_dbck_list[idx] -= rho_dbck_temp2;
 
             // Triples terms (ca-nasty)
-            Tensor<double, 5> T_mli_large("T_mli", nlmo_ijk, nlmo_ijk, ntno_ijk, ntno_ijk, ntno_ijk);
-            T_mli_large.zero();
-
             for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
                 int m = lmotriplet_to_lmos_[ijk][m_ijk];
 
@@ -1399,10 +1447,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                     auto S_ijk_mli = S_ijk_mli_list[idx][ml_idx];
 
                     // (2 t_{mli}^{ebc} - t_{mli}^{cbe} - t_{mli}^{bec})
-                    auto T_mli_psi = matmul_3d(triples_permuter(T_iajbkc_[mli], m, l, i), S_ijk_mli, n_tno_[mli], n_tno_[ijk]);
-
-                    Tensor<double, 3> T_mli("T_mli", ntno_ijk, ntno_ijk, ntno_ijk);
-                    ::memcpy(T_mli.data(), T_mli_psi->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
+                    Tensor<double, 3> T_mli = matmul_3d_einsums(
+                        triples_permuter_einsums(T_iajbkc_clone_[mli], m, l, i), S_ijk_mli, n_tno_[mli], n_tno_[ijk]);
 
                     Tensor<double, 3> T_lmi("T_lmi", ntno_ijk, ntno_ijk, ntno_ijk);
                     sort(Indices{index::b, index::a, index::c}, &T_lmi, Indices{index::a, index::b, index::c}, T_mli);
@@ -1413,19 +1459,16 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                     T_mli *= 2.0;
                     T_mli -= T_lmi;
                     T_mli -= T_ilm;
-                    
-                    ::memcpy(&T_mli_large(m_ijk, l_ijk, 0, 0, 0), T_mli.data(), ntno_ijk * ntno_ijk * ntno_ijk * sizeof(double));
+
+                    Tensor<double, 2> K_ldme_T_slice = K_ldme_T(m_ijk, l_ijk, All, All);
+                    einsum(1.0, Indices{index::d, index::b, index::c}, &rho_dbck_list[idx], -1.0, Indices{index::e, index::d}, K_ldme_T_slice, Indices{index::e, index::b, index::c}, T_mli);
                 } // end m_ijk
             } // end l_ijk
-            einsum(1.0, Indices{index::d, index::b, index::c}, &rho_dbck_list[idx], -1.0, Indices{index::m, index::l, index::e, index::d}, K_ldme_T, Indices{index::m, index::l, index::e, index::b, index::c}, T_mli_large);
         } // end idx
 
         // outfile->Printf("You alone deserve the glory\n");
 
         // => Stopping point 10/22 3:45 PM <= //
-
-        // Form rho_ljck intermediate (Lesiuk Eq. 15)
-        std::vector<Tensor<double, 2>> rho_ljck_list;
 
         std::vector<std::tuple<int, int, int>> long_perms = {std::make_tuple(i, j, k), std::make_tuple(i, k, j),
                                                                 std::make_tuple(j, i, k), std::make_tuple(j, k, i),
@@ -1440,13 +1483,16 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         std::vector<std::vector<SharedMatrix>> S_ijk_jmk_list = {S_ijk_ljk_[ijk], S_ijk_ljk_[ijk], S_ijk_ilk_[ijk], 
                                                                     S_ijk_ilk_[ijk], S_ijk_ijl_[ijk], S_ijk_ijl_[ijk]};
 
+        // Form rho_ljck intermediate (Lesiuk Eq. 15)
+        std::vector<Tensor<double, 2>> rho_ljck_list(long_perms.size());
+
         for (int idx = 0; idx < long_perms.size(); ++idx) {
             auto &[i, j, k] = long_perms[idx];
             auto &[i_idx, j_idx, k_idx] = long_perms_idx[idx];
             int jk = i_j_to_ij_[j][k];
             
-            Tensor<double, 2> rho_ljck("rho_ljck", nlmo_ijk, ntno_ijk);
-            einsum(0.0, Indices{index::l, index::c}, &rho_ljck, 1.0, Indices{index::Q, index::l}, q_io_t1_list[j_idx], Indices{index::Q, index::c}, q_iv_t1_list[k_idx]);
+            rho_ljck_list[idx] = Tensor<double, 2>("rho_ljck", nlmo_ijk, ntno_ijk);
+            einsum(0.0, Indices{index::l, index::c}, &rho_ljck_list[idx], 1.0, Indices{index::Q, index::l}, q_io_t1_list[j_idx], Indices{index::Q, index::c}, q_iv_t1_list[k_idx]);
 
             // => CHECKPOINT 10/25 3:40 PM <= //
 
@@ -1473,11 +1519,11 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             Tensor<double, 3> K_mdlj("K_mdlj", nlmo_ijk, ntno_ijk, nlmo_ijk);
             einsum(0.0, Indices{index::m, index::d, index::l}, &K_mdlj, 1.0, Indices{index::Q, index::m, index::d}, q_ov_[ijk], Indices{index::Q, index::l}, q_io_t1_list[j_idx]);
 
-            einsum(1.0, Indices{index::l, index::c}, &rho_ljck, 1.0, Indices{index::m, index::d, index::l}, K_mdlj, Indices{index::m, index::d, index::c}, U_mk);
+            einsum(1.0, Indices{index::l, index::c}, &rho_ljck_list[idx], 1.0, Indices{index::m, index::d, index::l}, K_mdlj, Indices{index::m, index::d, index::c}, U_mk);
 
             Tensor<double, 3> K_mdlj_T("K_mdlj_T", nlmo_ijk, nlmo_ijk, ntno_ijk);
             sort(Indices{index::l, index::m, index::d}, &K_mdlj_T, Indices{index::l, index::d, index::m}, K_mdlj);
-            einsum(1.0, Indices{index::l, index::c}, &rho_ljck, -1.0, Indices{index::l, index::m, index::d}, K_mdlj_T, Indices{index::m, index::d, index::c}, T_mk);
+            einsum(1.0, Indices{index::l, index::c}, &rho_ljck_list[idx], -1.0, Indices{index::l, index::m, index::d}, K_mdlj_T, Indices{index::m, index::d, index::c}, T_mk);
 
             Tensor<double, 3> K_ldmk("K_ldmk", nlmo_ijk, ntno_ijk, nlmo_ijk);
             einsum(0.0, Indices{index::l, index::d, index::m}, &K_ldmk, 1.0, Indices{index::Q, index::l, index::d}, q_ov_[ijk], Indices{index::Q, index::m}, q_io_t1_list[k_idx]);
@@ -1485,14 +1531,14 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             Tensor<double, 3> K_ldmk_T("K_ldmk_T", nlmo_ijk, nlmo_ijk, ntno_ijk);
             sort(Indices{index::l, index::m, index::d}, &K_ldmk_T, Indices{index::l, index::d, index::m}, K_ldmk);
 
-            einsum(1.0, Indices{index::l, index::c}, &rho_ljck, -1.0, Indices{index::l, index::m, index::d}, K_ldmk_T, Indices{index::m, index::d, index::c}, T_jm);
+            einsum(1.0, Indices{index::l, index::c}, &rho_ljck_list[idx], -1.0, Indices{index::l, index::m, index::d}, K_ldmk_T, Indices{index::m, index::d, index::c}, T_jm);
 
             Tensor<double, 2> T_jk("T_jk", ntno_ijk, ntno_ijk);
 
             auto S_ijk_jk = S_ijk_jk_list[idx];
             auto T_jk_ijk = linalg::triplet(S_ijk_jk, T_iajb_[jk], S_ijk_jk, false, false, true);
             ::memcpy(T_jk.data(), T_jk_ijk->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
-            einsum(1.0, Indices{index::l, index::c}, &rho_ljck, 1.0, Indices{index::l, index::c, index::e, index::d}, K_dble_T2, Indices{index::e, index::d}, T_jk);
+            einsum(1.0, Indices{index::l, index::c}, &rho_ljck_list[idx], 1.0, Indices{index::l, index::c, index::e, index::d}, K_dble_T2, Indices{index::e, index::d}, T_jk);
 
             for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
                 int m = lmotriplet_to_lmos_[ijk][m_ijk];
@@ -1507,10 +1553,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 auto S_ijk_jmk = S_ijk_jmk_list[idx][m_ijk];
 
                 // (2 t_{jmk}^{dec} - t_{jmk}^{dce} - t_{jmk}^{edc})
-                auto T_jmk_psi = matmul_3d(triples_permuter(T_iajbkc_[jmk], j, m, k), S_ijk_jmk, n_tno_[jmk], n_tno_[ijk]);
-
-                Tensor<double, 3> T_jmk("T_jmk", ntno_ijk, ntno_ijk, ntno_ijk);
-                ::memcpy(T_jmk.data(), T_jmk_psi->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
+                Tensor<double, 3> T_jmk = matmul_3d_einsums(
+                    triples_permuter_einsums(T_iajbkc_clone_[jmk], j, m, k), S_ijk_jmk, n_tno_[jmk], n_tno_[ijk]);
 
                 Tensor<double, 3> T_jkm("T_jkm", ntno_ijk, ntno_ijk, ntno_ijk);
                 sort(Indices{index::a, index::c, index::b}, &T_jkm, Indices{index::a, index::b, index::c}, T_jmk);
@@ -1522,10 +1566,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 T_jmk -= T_mjk;
                 T_jmk -= T_jkm;
                 
-                einsum(1.0, Indices{index::l, index::c}, &rho_ljck, 1.0, Indices{index::l, index::d, index::e}, K_lde, Indices{index::d, index::e, index::c}, T_jmk);
+                einsum(1.0, Indices{index::l, index::c}, &rho_ljck_list[idx], 1.0, Indices{index::l, index::d, index::e}, K_lde, Indices{index::d, index::e, index::c}, T_jmk);
             }
-
-            rho_ljck_list.push_back(rho_ljck);
         }
 
         // outfile->Printf("The honor and the praise\n");
@@ -1614,15 +1656,16 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         // outfile->Printf("A thousand hallelujahs and a thousand more\n");
 
         // Lesiuk Eq. 12b
-        Tensor<double, 2> chi_ad("chi_ad", ntno_ijk, ntno_ijk);
-        chi_ad = F_ad;
+        Tensor<double, 2> chi_ad("chi_ad", ntno_ijk, ntno_ijk); {
+            chi_ad = F_ad;
 
-        Tensor<double, 4> U_lm = T_lm;
-        Tensor<double, 4> T_lm_T("T_lm_T", nlmo_ijk, nlmo_ijk, ntno_ijk, ntno_ijk);
-        sort(Indices{index::l, index::m, index::e, index::d}, &T_lm_T, Indices{index::l, index::m, index::d, index::e}, T_lm);
-        U_lm *= 2.0;
-        U_lm -= T_lm_T;
-        einsum(1.0, Indices{index::a, index::d}, &chi_ad, -1.0, Indices{index::m, index::l, index::e, index::a}, U_lm, Indices{index::m, index::l, index::e, index::d}, K_ldme_T);
+            Tensor<double, 4> U_lm = T_lm;
+            Tensor<double, 4> T_lm_T("T_lm_T", nlmo_ijk, nlmo_ijk, ntno_ijk, ntno_ijk);
+            sort(Indices{index::l, index::m, index::e, index::d}, &T_lm_T, Indices{index::l, index::m, index::d, index::e}, T_lm);
+            U_lm *= 2.0;
+            U_lm -= T_lm_T;
+            einsum(1.0, Indices{index::a, index::d}, &chi_ad, -1.0, Indices{index::m, index::l, index::e, index::a}, U_lm, Indices{index::m, index::l, index::e, index::d}, K_ldme_T);
+        }
 
         // outfile->Printf("Who else would die for our redemption\n");
 
@@ -1658,19 +1701,20 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
 
         // chi_bdce (Lesiuk Eq. 13b, different order b/c different T1 convention)
         // Praise... to the Lord... only 20 lines
-        Tensor<double, 4> chi_dbec("chi_dbec", ntno_ijk, ntno_ijk, ntno_ijk, ntno_ijk);
-        einsum(0.0, Indices{index::d, index::b, index::e, index::c}, &chi_dbec, 1.0, Indices{index::Q, index::d, index::b}, q_vv_t1, Indices{index::Q, index::e, index::c}, q_vv_t1);
+        Tensor<double, 4> chi_dbec("chi_dbec", ntno_ijk, ntno_ijk, ntno_ijk, ntno_ijk); {
+            einsum(0.0, Indices{index::d, index::b, index::e, index::c}, &chi_dbec, 1.0, Indices{index::Q, index::d, index::b}, q_vv_t1, Indices{index::Q, index::e, index::c}, q_vv_t1);
 
-        Tensor<double, 4> chi_dbec_temp("chi_dbec_temp", ntno_ijk, ntno_ijk, ntno_ijk, ntno_ijk);
-        einsum(0.0, Indices{index::d, index::e, index::b, index::c}, &chi_dbec_temp, 1.0, Indices{index::l, index::m, index::d, index::e}, K_ldme_T, Indices{index::l, index::m, index::b, index::c}, T_lm);
+            Tensor<double, 4> chi_dbec_temp("chi_dbec_temp", ntno_ijk, ntno_ijk, ntno_ijk, ntno_ijk);
+            einsum(0.0, Indices{index::d, index::e, index::b, index::c}, &chi_dbec_temp, 1.0, Indices{index::l, index::m, index::d, index::e}, K_ldme_T, Indices{index::l, index::m, index::b, index::c}, T_lm);
         
-        Tensor<double, 4> chi_dbec_temp_T("chi_dbec_temp_T", ntno_ijk, ntno_ijk, ntno_ijk, ntno_ijk);
-        sort(Indices{index::d, index::b, index::e, index::c}, &chi_dbec_temp_T, Indices{index::d, index::e, index::b, index::c}, chi_dbec_temp);
-        chi_dbec += chi_dbec_temp_T;
+            Tensor<double, 4> chi_dbec_temp_T("chi_dbec_temp_T", ntno_ijk, ntno_ijk, ntno_ijk, ntno_ijk);
+            sort(Indices{index::d, index::b, index::e, index::c}, &chi_dbec_temp_T, Indices{index::d, index::e, index::b, index::c}, chi_dbec_temp);
+            chi_dbec += chi_dbec_temp_T;
 
-        // Rearrange chi_dbec
-        sort(Indices{index::d, index::e, index::b, index::c}, &chi_dbec_temp, Indices{index::d, index::b, index::e, index::c}, chi_dbec);
-        chi_dbec = chi_dbec_temp;
+            // Rearrange chi_dbec
+            sort(Indices{index::d, index::e, index::b, index::c}, &chi_dbec_temp, Indices{index::d, index::b, index::e, index::c}, chi_dbec);
+            chi_dbec = chi_dbec_temp;
+        }
 
         // outfile->Printf("There isn't time enough to sing of what You've done\n");
 
@@ -1740,9 +1784,7 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             Vperms[idx] = Tensor<double, 3>("V_iajbkc", ntno_ijk, ntno_ijk, ntno_ijk);
 
             // T_ijk contributions
-            Tensor<double, 3> T_ijk("T_ijk", ntno_ijk, ntno_ijk, ntno_ijk);
-            auto T_ijk_psi = triples_permuter(T_iajbkc_[ijk], i, j, k);
-            ::memcpy(T_ijk.data(), T_ijk_psi->get_pointer(), ntno_ijk * ntno_ijk * ntno_ijk * sizeof(double));
+            Tensor<double, 3> T_ijk = triples_permuter_einsums(T_iajbkc_clone_[ijk], i, j, k);
             einsum(0.0, Indices{index::a, index::b, index::c}, &Vperms[idx], 1.0, Indices{index::a, index::d}, chi_ad, Indices{index::d, index::b, index::c}, T_ijk);
 
             einsum(1.0, Indices{index::a, index::b, index::c}, &Vperms[idx], 1.0, Indices{index::a, index::d, index::e}, T_ijk, Indices{index::d, index::e, index::b, index::c}, chi_dbec);
@@ -1756,9 +1798,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 
                 auto S_ijk_ljk = S_ijk_ljk_list[idx][l_ijk];
 
-                Tensor<double, 3> T_ljk("T_ljk", ntno_ijk, ntno_ijk, ntno_ijk);
-                auto T_ljk_psi = matmul_3d(triples_permuter(T_iajbkc_[ljk], l, j, k), S_ijk_ljk, n_tno_[ljk], n_tno_[ijk]);
-                ::memcpy(T_ljk.data(), T_ljk_psi->get_pointer(), ntno_ijk * ntno_ijk * ntno_ijk * sizeof(double));
+                Tensor<double, 3> T_ljk = matmul_3d_einsums(
+                    triples_permuter_einsums(T_iajbkc_clone_[ljk], l, j, k), S_ijk_ljk, n_tno_[ljk], n_tno_[ijk]);
 
                 Tensor<double, 3> T_ljk_clone = T_ljk;
                 T_ljk_clone *= -(chi_li_list[i_idx])(l_ijk);
@@ -1821,9 +1862,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
 
                     auto S_ijk_ilm = S_ijk_ilm_list[idx][lm_idx];
 
-                    Tensor<double, 3> T_ilm("T_ilm", ntno_ijk, ntno_ijk, ntno_ijk);
-                    auto T_ilm_psi = matmul_3d(triples_permuter(T_iajbkc_[ilm], i, l, m), S_ijk_ilm, n_tno_[ilm], n_tno_[ijk]);
-                    ::memcpy(T_ilm.data(), T_ilm_psi->get_pointer(), ntno_ijk * ntno_ijk * ntno_ijk * sizeof(double));
+                    Tensor<double, 3> T_ilm = matmul_3d_einsums(
+                        triples_permuter_einsums(T_iajbkc_clone_[ilm], i, l, m), S_ijk_ilm, n_tno_[ilm], n_tno_[ijk]);
 
                     Tensor<double, 3> T_ilm_clone = T_ilm;
                     T_ilm_clone *= (chi_jk_list[idx])(l_ijk, m_ijk);
@@ -1897,9 +1937,10 @@ void DLPNOCCSDT::lccsdt_iterations() {
         }
     }
 
-    // Necessary intermediates
+    // Amplitude intermediates
     T_n_ijk_.resize(n_lmo_triplets);
-    T_iajbkc_tilde_.resize(n_lmo_triplets);
+    T_iajbkc_clone_.resize(n_lmo_triplets);
+    U_iajbkc_.resize(n_lmo_triplets);
 
     // LCCSDT iterations
     outfile->Printf("\n  ==> Local CCSDT <==\n\n");
@@ -1964,23 +2005,26 @@ void DLPNOCCSDT::lccsdt_iterations() {
             } // end l_ijk
         } // end ijk
 
-        // Create T_iajbkc_tilde intermediate
+        // Create T_iajbkc_clone intermediate
 #pragma omp parallel for schedule(dynamic, 1)
         for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
             auto &[i, j, k] = ijk_to_i_j_k_[ijk];
 
-            T_iajbkc_tilde_[ijk] = Tensor<double, 3>("T_iajbkc_tilde", n_tno_[ijk], n_tno_[ijk], n_tno_[ijk]);
+            T_iajbkc_clone_[ijk] = Tensor<double, 3>("T_ijk", n_tno_[ijk], n_tno_[ijk], n_tno_[ijk]);
+            ::memcpy(T_iajbkc_clone_[ijk].data(), T_iajbkc_[ijk]->get_pointer(), n_tno_[ijk] * n_tno_[ijk] * n_tno_[ijk] * sizeof(double));
+
+            U_iajbkc_[ijk] = Tensor<double, 3>("U_iajbkc", n_tno_[ijk], n_tno_[ijk], n_tno_[ijk]);
             
             for (int a_ijk = 0; a_ijk < n_tno_[ijk]; ++a_ijk) {
                 for (int b_ijk = 0; b_ijk < n_tno_[ijk]; ++b_ijk) {
                     for (int c_ijk = 0; c_ijk < n_tno_[ijk]; ++c_ijk) {
-                        T_iajbkc_tilde_[ijk](a_ijk, b_ijk, c_ijk) = 4 * (*T_iajbkc_[ijk])(a_ijk, b_ijk * n_tno_[ijk] + c_ijk)
+                        U_iajbkc_[ijk](a_ijk, b_ijk, c_ijk) = 4 * (*T_iajbkc_[ijk])(a_ijk, b_ijk * n_tno_[ijk] + c_ijk)
                             - 2 * (*T_iajbkc_[ijk])(a_ijk, c_ijk * n_tno_[ijk] + b_ijk) - 2 * (*T_iajbkc_[ijk])(c_ijk, b_ijk * n_tno_[ijk] + a_ijk)
                             - 2 * (*T_iajbkc_[ijk])(b_ijk, a_ijk * n_tno_[ijk] + c_ijk) + (*T_iajbkc_[ijk])(b_ijk, c_ijk * n_tno_[ijk] + a_ijk)
                             + (*T_iajbkc_[ijk])(c_ijk, a_ijk * n_tno_[ijk] + b_ijk);
                     }
                 }
-            }
+            } // end c_ijk
         }
 
         // T1-dress integrals and Fock matrices
