@@ -42,6 +42,7 @@
 #include "psi4/libmints/molecule.h"
 #include "psi4/lib3index/dfhelper.h"
 #include "psi4/libdiis/diismanager.h"
+#include "psi4/libqt/qt.h"
 
 #include "/home/aj48384/github/psi4/psi4/src/psi4/dlpno/dlpno.h"
 #include "/home/aj48384/github/psi4/psi4/src/psi4/dlpno/sparse.h"
@@ -1480,7 +1481,7 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         
         std::vector<SharedMatrix> S_ijk_jk_list = {S_ijk_jk_[ijk], S_ijk_jk_[ijk], S_ijk_ik_[ijk], 
                                                     S_ijk_ik_[ijk], S_ijk_ij_[ijk], S_ijk_ij_[ijk]};
-        std::vector<std::vector<SharedMatrix>> S_ijk_jmk_list = {S_ijk_ljk_[ijk], S_ijk_ljk_[ijk], S_ijk_ilk_[ijk], 
+        std::vector<std::vector<SharedMatrix>> S_ijk_mjk_list = {S_ijk_ljk_[ijk], S_ijk_ljk_[ijk], S_ijk_ilk_[ijk], 
                                                                     S_ijk_ilk_[ijk], S_ijk_ijl_[ijk], S_ijk_ijl_[ijk]};
 
         // Form rho_ljck intermediate (Lesiuk Eq. 15)
@@ -1542,31 +1543,28 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
 
             for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
                 int m = lmotriplet_to_lmos_[ijk][m_ijk];
-                int jmk_dense = j * naocc * naocc + m * naocc + k;
-                if (!i_j_k_to_ijk_.count(jmk_dense)) continue;
+                int mjk_dense = m * naocc * naocc + j * naocc + k;
+                if (!i_j_k_to_ijk_.count(mjk_dense)) continue;
 
-                Tensor<double, 2> q_mv_slice = q_ov_[ijk](All, m_ijk, All);
-                Tensor<double, 3> K_lde("K_lde", nlmo_ijk, ntno_ijk, ntno_ijk);
-                einsum(0.0, Indices{index::l, index::d, index::e}, &K_lde, 1.0, Indices{index::Q, index::l, index::d}, q_ov_[ijk], Indices{index::Q, index::e}, q_mv_slice);
+                int mjk = i_j_k_to_ijk_[mjk_dense];
+                auto S_ijk_mjk = S_ijk_mjk_list[idx][m_ijk];
 
-                int jmk = i_j_k_to_ijk_[jmk_dense];
-                auto S_ijk_jmk = S_ijk_jmk_list[idx][m_ijk];
+                // (2 t_{mjk}^{edc} - t_{mjk}^{cde} - t_{mjk}^{dec})
+                Tensor<double, 3> T_mjk = matmul_3d_einsums(
+                    triples_permuter_einsums(T_iajbkc_clone_[mjk], m, j, k), S_ijk_mjk, n_tno_[mjk], n_tno_[ijk]);
 
-                // (2 t_{jmk}^{dec} - t_{jmk}^{dce} - t_{jmk}^{edc})
-                Tensor<double, 3> T_jmk = matmul_3d_einsums(
-                    triples_permuter_einsums(T_iajbkc_clone_[jmk], j, m, k), S_ijk_jmk, n_tno_[jmk], n_tno_[ijk]);
+                Tensor<double, 3> T_kjm("T_kjm", ntno_ijk, ntno_ijk, ntno_ijk);
+                sort(Indices{index::c, index::b, index::a}, &T_kjm, Indices{index::a, index::b, index::c}, T_mjk);
 
-                Tensor<double, 3> T_jkm("T_jkm", ntno_ijk, ntno_ijk, ntno_ijk);
-                sort(Indices{index::a, index::c, index::b}, &T_jkm, Indices{index::a, index::b, index::c}, T_jmk);
+                Tensor<double, 3> T_jmk("T_jmk", ntno_ijk, ntno_ijk, ntno_ijk);
+                sort(Indices{index::b, index::a, index::c}, &T_jmk, Indices{index::a, index::b, index::c}, T_mjk);
 
-                Tensor<double, 3> T_mjk("T_mjk", ntno_ijk, ntno_ijk, ntno_ijk);
-                sort(Indices{index::b, index::a, index::c}, &T_mjk, Indices{index::a, index::b, index::c}, T_jmk);
-
-                T_jmk *= 2.0;
-                T_jmk -= T_mjk;
-                T_jmk -= T_jkm;
+                T_mjk *= 2.0;
+                T_mjk -= T_kjm;
+                T_mjk -= T_jmk;
                 
-                einsum(1.0, Indices{index::l, index::c}, &rho_ljck_list[idx], 1.0, Indices{index::l, index::d, index::e}, K_lde, Indices{index::d, index::e, index::c}, T_jmk);
+                Tensor<double, 3> K_mled_slice = K_ldme_T(m_ijk, All, All, All);
+                einsum(1.0, Indices{index::l, index::c}, &rho_ljck_list[idx], 1.0, Indices{index::l, index::e, index::d}, K_mled_slice, Indices{index::e, index::d, index::c}, T_mjk);
             }
         }
 
@@ -1865,9 +1863,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                     Tensor<double, 3> T_ilm = matmul_3d_einsums(
                         triples_permuter_einsums(T_iajbkc_clone_[ilm], i, l, m), S_ijk_ilm, n_tno_[ilm], n_tno_[ijk]);
 
-                    Tensor<double, 3> T_ilm_clone = T_ilm;
-                    T_ilm_clone *= (chi_jk_list[idx])(l_ijk, m_ijk);
-                    Vperms[idx] += T_ilm_clone;
+                    T_ilm *= (chi_jk_list[idx])(l_ijk, m_ijk);
+                    Vperms[idx] += T_ilm;
                 } // end m_ijk
             } // end l_ijk
         } // end idx
@@ -2025,22 +2022,31 @@ void DLPNOCCSDT::lccsdt_iterations() {
                     }
                 }
             } // end c_ijk
-        }
+        } // end ijk
 
         // T1-dress integrals and Fock matrices
         t1_ints();
         t1_fock();
 
         // compute singles amplitude
+
+        timer_on("DLPNO-CCSDT : R_ia");
         compute_R_ia_triples(R_ia, R_ia_buffer);
+        timer_off("DLPNO-CCSDT : R_ia");
+
         // compute doubles amplitude
+        timer_on("DLPNO-CCSDT : R_iajb");
         compute_R_iajb_triples(R_iajb, Rn_iajb, R_iajb_buffer);
+        timer_off("DLPNO-CCSDT : R_iajb");
+
         // compute triples amplitude
+        timer_on("DLPNO-CCSDT : R_iajbkc");
         if (options_.get_bool("DLPNO_CC3")) {
             compute_R_iajbkc_cc3(R_iajbkc);
         } else {
             compute_R_iajbkc(R_iajbkc);
         }
+        timer_off("DLPNO-CCSDT : R_iajbkc");
 
         // Update singles amplitude
 #pragma omp parallel for
@@ -2175,11 +2181,24 @@ double DLPNOCCSDT::compute_energy() {
     nthread_ = Process::environment.get_n_threads();
 #endif
 
+    timer_on("DLPNO-CCSDT");
+
     print_header();
     estimate_memory();
+
+    timer_on("DLPNO-CCSDT : Compute ERIs");
     compute_integrals();
+    timer_off("DLPNO-CCSDT : Compute ERIs");
+
+    timer_on("DLPNO-CCSDT : Compute TNO overlaps");
     compute_tno_overlaps();
+    timer_off("DLPNO-CCSDT : Compute TNO overlaps");
+
+    timer_on("DLPNO-CCSDT : LCCSDT iterations");
     lccsdt_iterations();
+    timer_off("DLPNO-CCSDT : LCCSDT iterations");
+
+    timer_off("DLPNO-CCSDT");
 
     double e_scf = variables_["SCF TOTAL ENERGY"];
     double e_ccsdt_corr = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;

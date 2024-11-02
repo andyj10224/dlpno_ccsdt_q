@@ -54,7 +54,7 @@ def run_dlpno_ccsdt_q(name, **kwargs):
         ref_wfn = psi4.driver.scf_helper(name, **kwargs)
 
     # Ensure IWL files have been written when not using DF/CD
-    proc_util.check_iwl_file_from_scf_type(psi4.core.get_option('SCF', 'SCF_TYPE'), ref_wfn)
+    # proc_util.check_iwl_file_from_scf_type(psi4.core.get_option('SCF', 'SCF_TYPE'), ref_wfn)
 
     # Ensure the DF basis set is loaded before calling the plugin
     aux_basis = core.BasisSet.build(ref_wfn.molecule(), "DF_BASIS_MP2",
