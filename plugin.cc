@@ -3346,13 +3346,19 @@ double DLPNOCCSDT_Q::compute_q_energy() {
         sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::c, index::d, index::a}, T_ijkl);
         T_tilde -= T_buffer;
 
-        // => alpha and beta intermediates <= //
+        // => alpha and beta contributions <= //
 
-        Tensor<double, 4> alpha("alpha", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
-        Tensor<double, 4> beta("beta", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
+        // => 2 - P_{cd} contributions
 
-        Tensor<double, 4> T_ijm_full("T_ijm", nlmo_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
-        T_ijm_full.zero();
+        Tensor<double, 4> T_bar_dc("T_bar_dc", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
+        sort(Indices{index::a, index::b, index::d, index::c}, &T_bar_dc, Indices{index::a, index::b, index::c, index::d}, T_bar);
+        Tensor<double, 4> T_tilde_dc("T_tilde_dc", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
+        sort(Indices{index::a, index::b, index::d, index::c}, &T_tilde_dc, Indices{index::a, index::b, index::c, index::d}, T_tilde);
+
+        Tensor<double, 2> alpha_ijm_buffer("alpha_ijm_buffer", nlmo_ijkl, nqno_ijkl);
+        alpha_ijm_buffer.zero();
+        Tensor<double, 2> beta_ijm_buffer("beta_ijm_buffer", nlmo_ijkl, nqno_ijkl);
+        beta_ijm_buffer.zero();
 
         for (int m_ijkl = 0; m_ijkl < nlmo_ijkl; ++m_ijkl) {
             int m = lmoquadruplet_to_lmos_[ijkl][m_ijkl];
@@ -3364,9 +3370,27 @@ double DLPNOCCSDT_Q::compute_q_energy() {
                 S_ijkl_ijm = linalg::triplet(X_qno_[ijkl], S_ijkl_ijm, X_tno_[ijm], true, false, false);
                 auto T_ijm = matmul_3d_einsums(triples_permuter_einsums(T_iajbkc_clone_[ijm], i, j, m), 
                                                 S_ijkl_ijm, n_tno_[ijm], n_qno_[ijkl]);
-                ::memcpy(&T_ijm_full(m_ijkl, 0, 0, 0), T_ijm.data(), nqno_ijkl * nqno_ijkl * nqno_ijkl * sizeof(double));
+                
+                Tensor<double, 1> alpha_ijm_temp("alpha_ijm_temp", nqno_ijkl);
+                einsum(0.0, Indices{index::d}, &alpha_ijm_temp, 2.0, Indices{index::a, index::b, index::c, index::d}, T_bar, Indices{index::a, index::b, index::c}, T_ijm);
+                einsum(1.0, Indices{index::d}, &alpha_ijm_temp, -1.0, Indices{index::a, index::b, index::c, index::d}, T_bar_dc, Indices{index::a, index::b, index::c}, T_ijm);
+                ::memcpy(&alpha_ijm_buffer(m_ijkl, 0), alpha_ijm_temp.data(), nqno_ijkl * sizeof(double));
+
+                Tensor<double, 1> beta_ijm_temp("beta_ijm_temp", nqno_ijkl);
+                einsum(0.0, Indices{index::d}, &beta_ijm_temp, 2.0, Indices{index::a, index::b, index::c, index::d}, T_tilde, Indices{index::a, index::b, index::c}, T_ijm);
+                einsum(1.0, Indices{index::d}, &beta_ijm_temp, -1.0, Indices{index::a, index::b, index::c, index::d}, T_tilde_dc, Indices{index::a, index::b, index::c}, T_ijm);
+                ::memcpy(&beta_ijm_buffer(m_ijkl, 0), beta_ijm_temp.data(), nqno_ijkl * sizeof(double));
             } // end if
         } // end m_ijkl
+
+        Tensor<double, 2> K_lk_T("K_lk_T", nlmo_ijkl, nqno_ijkl);
+        sort(Indices{index::m, index::d}, &K_lk_T, Indices{index::d, index::m}, K_iajm_list_[ijkl][l_idx * 4 + k_idx]);
+        Tensor<double, 2> K_kl_T("K_kl_T", nlmo_ijkl, nqno_ijkl);
+        sort(Indices{index::m, index::d}, &K_kl_T, Indices{index::d, index::m}, K_iajm_list_[ijkl][k_idx * 4 + l_idx]);
+
+        quadruplet_energy += 2.0 * (linear_algebra::dot(alpha_ijm_buffer, K_lk_T) + linear_algebra::dot(beta_ijm_buffer, K_kl_T));
+
+        // 2 - P_{kl} contributions
 
         Tensor<double, 3> T_ijk("T_ijk", nqno_ijkl, nqno_ijkl, nqno_ijkl);
         Tensor<double, 3> T_ijl("T_ijl", nqno_ijkl, nqno_ijkl, nqno_ijkl);
@@ -3391,32 +3415,26 @@ double DLPNOCCSDT_Q::compute_q_energy() {
                                             S_ijkl_ijl, n_tno_[ijl], n_qno_[ijkl]);
         }
 
+        Tensor<double, 3> T_ijk_bar("T_ijk_bar", nqno_ijkl, nqno_ijkl, nqno_ijkl);
+        einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijk_bar, 1.0, Indices{index::a, index::b, index::c, index::d}, T_bar,
+                Indices{index::a, index::b, index::e}, T_ijk);
+        Tensor<double, 3> T_ijl_bar("T_ijl_bar", nqno_ijkl, nqno_ijkl, nqno_ijkl);
+        einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijl_bar, 1.0, Indices{index::a, index::b, index::c, index::d}, T_bar,
+                Indices{index::a, index::b, index::e}, T_ijl);
+        Tensor<double, 3> T_ijk_tilde("T_ijk_tilde", nqno_ijkl, nqno_ijkl, nqno_ijkl);
+        einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijk_tilde, 1.0, Indices{index::a, index::b, index::c, index::d}, T_tilde,
+                Indices{index::a, index::b, index::e}, T_ijk);
+        Tensor<double, 3> T_ijl_tilde("T_ijl_tilde", nqno_ijkl, nqno_ijkl, nqno_ijkl);
+        einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijl_tilde, 1.0, Indices{index::a, index::b, index::c, index::d}, T_tilde,
+                Indices{index::a, index::b, index::e}, T_ijl);
+
         Tensor<double, 3> g_kdce_T("g_kdce_T", nqno_ijkl, nqno_ijkl, nqno_ijkl);
         sort(Indices{index::e, index::c, index::d}, &g_kdce_T, Indices{index::d, index::c, index::e}, K_iabe_list_[ijkl][k_idx]);
         Tensor<double, 3> g_ldce_T("g_ldce_T", nqno_ijkl, nqno_ijkl, nqno_ijkl);
         sort(Indices{index::e, index::c, index::d}, &g_ldce_T, Indices{index::d, index::c, index::e}, K_iabe_list_[ijkl][l_idx]);
 
-        einsum(0.0, Indices{index::a, index::b, index::c, index::d}, &alpha, 1.0, 
-                Indices{index::m, index::a, index::b, index::c}, T_ijm_full, Indices{index::d, index::m}, K_iajm_list_[ijkl][l_idx * 4 + k_idx]);
-        sort(Indices{index::a, index::b, index::d, index::c}, &T_buffer, Indices{index::a, index::b, index::c, index::d}, alpha);
-        alpha *= 2.0;
-        alpha -= T_buffer;
-        einsum(1.0, Indices{index::a, index::b, index::c, index::d}, &alpha, -2.0,
-                Indices{index::a, index::b, index::e}, T_ijk, Indices{index::e, index::c, index::d}, g_ldce_T);
-        einsum(1.0, Indices{index::a, index::b, index::c, index::d}, &alpha, 1.0,
-                Indices{index::a, index::b, index::e}, T_ijl, Indices{index::e, index::c, index::d}, g_kdce_T);
-        
-        einsum(0.0, Indices{index::a, index::b, index::c, index::d}, &beta, 1.0, 
-                Indices{index::m, index::a, index::b, index::c}, T_ijm_full, Indices{index::d, index::m}, K_iajm_list_[ijkl][k_idx * 4 + l_idx]);
-        sort(Indices{index::a, index::b, index::d, index::c}, &T_buffer, Indices{index::a, index::b, index::c, index::d}, beta);
-        beta *= 2.0;
-        beta -= T_buffer;
-        einsum(1.0, Indices{index::a, index::b, index::c, index::d}, &beta, -2.0,
-                Indices{index::a, index::b, index::e}, T_ijl, Indices{index::e, index::c, index::d}, g_kdce_T);
-        einsum(1.0, Indices{index::a, index::b, index::c, index::d}, &beta, 1.0,
-                Indices{index::a, index::b, index::e}, T_ijk, Indices{index::e, index::c, index::d}, g_ldce_T);
-
-        quadruplet_energy += 2.0 * (linear_algebra::dot(alpha, T_bar) + linear_algebra::dot(beta, T_tilde));
+        quadruplet_energy += -4.0 * linear_algebra::dot(T_ijk_bar, g_ldce_T) + 2.0 * linear_algebra::dot(T_ijl_bar, g_kdce_T);
+        quadruplet_energy += -4.0 * linear_algebra::dot(T_ijl_tilde, g_kdce_T) + 2.0 * linear_algebra::dot(T_ijk_tilde, g_ldce_T);
 
 #pragma omp atomic
         e_ijkl_[ijkl] += quadruplet_energy;
@@ -3655,8 +3673,10 @@ double DLPNOCCSDT_Q::compute_energy() {
     outfile->Printf("    * Screened Quadruplets Contribution:        %16.12f\n", de_lccsdt_q_screened_);
 
     double e_scf = variables_["SCF TOTAL ENERGY"];
-    double e_ccsdt_q_corr = E_Q + e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+    double e_ccsdt_q_corr = E_Q + de_lccsdt_q_screened_ + e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
     double e_ccsdt_q_total = e_scf + e_ccsdt_q_corr;
+
+    outfile->Printf("\n\n  @Total DLPNO-CCSDT(Q) Energy: %16.12f\n", e_ccsdt_q_total);
 
     timer_off("DLPNO-CCSDT(Q)");
 
