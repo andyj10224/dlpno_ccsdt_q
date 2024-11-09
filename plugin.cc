@@ -2293,7 +2293,7 @@ class DLPNOCCSDT_Q : public DLPNOCCSDT {
     void sort_quadruplets(double e_total);
 
     /// A helper function to transform QNO-like quantities
-    Tensor<double, 4> matmul_4d(const Tensor<double, 4>& A, SharedMatrix X, int dim_old, int dim_new);
+    Tensor<double, 4> matmul_4d(const Tensor<double, 4>& A, const SharedMatrix &X, int dim_old, int dim_new);
     /// Returns a symmetrized version of that matrix (in i <= j <= k <= l ordering)
     Tensor<double, 4> quadruples_permuter(const Tensor<double, 4>& X, int i, int j, int k, int l);
 
@@ -2318,6 +2318,34 @@ class DLPNOCCSDT_Q : public DLPNOCCSDT {
 
 DLPNOCCSDT_Q::DLPNOCCSDT_Q(SharedWavefunction ref_wfn, Options &options) : DLPNOCCSDT(ref_wfn, options) {}
 DLPNOCCSDT_Q::~DLPNOCCSDT_Q() {}
+
+Tensor<double, 4> DLPNOCCSDT_Q::matmul_4d(const Tensor<double, 4> &A, const SharedMatrix &X, int dim_old, int dim_new) {
+    /* Performs the operation A'[i,j,k,l] = A[I, J, K, L] * X[i, I] * X[j, J] * X[k, K] * X[l, L] for tesseract 4d tensors */
+
+    // TODO: Change this into a TensorView
+    Tensor<double, 2> Xview("Xview", dim_new, dim_old);
+    ::memcpy(Xview.data(), X->get_pointer(), dim_new * dim_old * sizeof(double));
+
+    Tensor<double, 4> A_new1("A_new1", dim_old, dim_old, dim_old, dim_new);
+    einsum(0.0, Indices{index::I, index::J, index::K, index::l}, &A_new1, 1.0, Indices{index::I, index::J, index::K, index::L}, A, Indices{index::l, index::L}, Xview);
+
+    Tensor<double, 4> A_new2("A_new2", dim_new, dim_old, dim_old, dim_new);
+    einsum(0.0, Indices{index::i, index::J, index::K, index::l}, &A_new2, 1.0, Indices{index::I, index::J, index::K, index::l}, A_new1, Indices{index::i, index::I}, Xview);
+
+    Tensor<double, 4> A_new3("A_new3", dim_old, dim_new, dim_new, dim_old);
+    sort(Indices{index::J, index::i, index::l, index::K}, &A_new3, Indices{index::i, index::J, index::K, index::l}, A_new2);
+
+    Tensor<double, 4> A_new4("A_new4", dim_old, dim_new, dim_new, dim_new);
+    einsum(0.0, Indices{index::J, index::i, index::l, index::k}, &A_new4, 1.0, Indices{index::J, index::i, index::l, index::K}, A_new3, Indices{index::k, index::K}, Xview);
+
+    Tensor<double, 4> A_new5("A_new5", dim_new, dim_new, dim_new, dim_new);
+    einsum(0.0, Indices{index::j, index::i, index::l, index::k}, &A_new5, 1.0, Indices{index::J, index::i, index::l, index::k}, A_new4, Indices{index::j, index::J}, Xview);
+
+    Tensor<double, 4> A_new("A_new", dim_new, dim_new, dim_new, dim_new);
+    sort(Indices{index::i, index::j, index::k, index::l}, &A_new, Indices{index::j, index::i, index::l, index::k}, A_new5);
+
+    return A_new;
+}
 
 Tensor<double, 4> DLPNOCCSDT_Q::quadruples_permuter(const Tensor<double, 4>& X, int i, int j, int k, int l) {
 
@@ -3401,6 +3429,171 @@ double DLPNOCCSDT_Q::compute_q_energy() {
     return E_Q;
 }
 
+double DLPNOCCSDT_Q::lccsdt_q_iterations() {
+    timer_on("LCCSDT(Q) Iterations");
+
+    int naocc = nalpha_ - nfrzc();
+    int n_lmo_quadruplets = ijkl_to_i_j_k_l_.size();
+
+    outfile->Printf("\n  ==> Local CCSDT(Q) <==\n\n");
+    outfile->Printf("    E_CONVERGENCE = %.2e\n", options_.get_double("E_CONVERGENCE"));
+    outfile->Printf("    R_CONVERGENCE = %.2e\n\n", options_.get_double("R_CONVERGENCE"));
+    outfile->Printf("                         Corr. Energy    Delta E     Max R     Time (s)\n");
+
+    int iteration = 1, max_iteration = options_.get_int("DLPNO_MAXITER");
+    double e_curr = 0.0, e_prev = 0.0, r_curr = 0.0;
+    bool e_converged = false, r_converged = false;
+
+    double F_CUT = options_.get_double("F_CUT_Q");
+    double T_CUT_ITER = options_.get_double("T_CUT_ITER_Q");
+
+    std::vector<double> e_ijkl_old(n_lmo_quadruplets, 0.0);
+
+    while (!(e_converged && r_converged)) {
+        // RMS of residual per single LMO, for assesing convergence
+        std::vector<double> R_iajbkcld_rms(n_lmo_quadruplets, 0.0);
+
+        std::time_t time_start = std::time(nullptr);
+
+#pragma omp parallel for schedule(dynamic)
+        for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
+            auto &[i, j, k, l] = ijkl_to_i_j_k_l_[ijkl];
+
+            int nqno_ijkl = n_qno_[ijkl];
+            if (std::fabs(e_ijkl_[ijkl] - e_ijkl_old[ijkl]) < std::fabs(e_ijkl_old[ijkl] * T_CUT_ITER)) continue;
+
+            // S integrals
+            std::vector<int> quadruplet_ext_domain;
+            for (int m = 0; m < naocc; ++m) {
+                int ijkm_dense = i * std::pow(naocc, 3) + j * std::pow(naocc, 2) + k * naocc + m;
+                int ijml_dense = i * std::pow(naocc, 3) + j * std::pow(naocc, 2) + m * naocc + l;
+                int imkl_dense = i * std::pow(naocc, 3) + m * std::pow(naocc, 2) + k * naocc + l;
+                int mjkl_dense = m * std::pow(naocc, 3) + j * std::pow(naocc, 2) + k * naocc + l;
+
+                if (l != m && i_j_k_l_to_ijkl_.count(ijkm_dense) && std::fabs((*F_lmo_)(l, m)) >= F_CUT) {
+                    int ijkm = i_j_k_l_to_ijkl_[ijkm_dense];
+                    quadruplet_ext_domain = merge_lists(quadruplet_ext_domain, lmoquadruplet_to_paos_[ijkm]);
+                }
+
+                if (k != m && i_j_k_l_to_ijkl_.count(ijml_dense) && std::fabs((*F_lmo_)(k, m)) >= F_CUT) {
+                    int ijml = i_j_k_l_to_ijkl_[ijml_dense];
+                    quadruplet_ext_domain = merge_lists(quadruplet_ext_domain, lmoquadruplet_to_paos_[ijml]);
+                }
+
+                if (j != m && i_j_k_l_to_ijkl_.count(imkl_dense) && std::fabs((*F_lmo_)(j, m)) >= F_CUT) {
+                    int imkl = i_j_k_l_to_ijkl_[imkl_dense];
+                    quadruplet_ext_domain = merge_lists(quadruplet_ext_domain, lmoquadruplet_to_paos_[imkl]);
+                }
+
+                if (i != m && i_j_k_l_to_ijkl_.count(mjkl_dense) && std::fabs((*F_lmo_)(i, m)) >= F_CUT) {
+                    int mjkl = i_j_k_l_to_ijkl_[mjkl_dense];
+                    quadruplet_ext_domain = merge_lists(quadruplet_ext_domain, lmoquadruplet_to_paos_[mjkl]);
+                }
+            }
+            auto S_ijkl = submatrix_rows_and_cols(*S_pao_, quadruplet_ext_domain, lmoquadruplet_to_paos_[ijkl]);
+            S_ijkl = linalg::doublet(S_ijkl, X_qno_[ijkl], false, false);
+
+            Tensor<double, 4> R_ijkl("R_ijkl", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
+            R_ijkl = gamma_ijkl_[ijkl];
+
+            for (int a_ijkl = 0; a_ijkl < nqno_ijkl; ++a_ijkl) {
+                for (int b_ijkl = 0; b_ijkl < nqno_ijkl; ++b_ijkl) {
+                    for (int c_ijkl = 0; c_ijkl < nqno_ijkl; ++c_ijkl) {
+                        for (int d_ijkl = 0; d_ijkl < nqno_ijkl; ++d_ijkl) {
+                            (R_ijkl)(a_ijkl, b_ijkl, c_ijkl, d_ijkl) += (T_iajbkcld_[ijkl])(a_ijkl, b_ijkl, c_ijkl, d_ijkl) *
+                                ((*e_qno_[ijkl])(a_ijkl) + (*e_qno_[ijkl])(b_ijkl) + (*e_qno_[ijkl])(c_ijkl) + (*e_qno_[ijkl])(d_ijkl) 
+                                    - (*F_lmo_)(i, i) - (*F_lmo_)(j, j) - (*F_lmo_)(k, k) - (*F_lmo_)(l, l));
+                        } // end d_ijkl
+                    } // end c_ijkl
+                } // end b_ijkl
+            } // end a_ijkl
+
+            for (int m = 0; m < naocc; ++m) {
+                int ijkm_dense = i * std::pow(naocc, 3) + j * std::pow(naocc, 2) + k * naocc + m;
+                int ijml_dense = i * std::pow(naocc, 3) + j * std::pow(naocc, 2) + m * naocc + l;
+                int imkl_dense = i * std::pow(naocc, 3) + m * std::pow(naocc, 2) + k * naocc + l;
+                int mjkl_dense = m * std::pow(naocc, 3) + j * std::pow(naocc, 2) + k * naocc + l;
+
+                if (l != m && i_j_k_l_to_ijkl_.count(ijkm_dense) && std::fabs((*F_lmo_)(l, m)) >= F_CUT) {
+                    int ijkm = i_j_k_l_to_ijkl_[ijkm_dense];
+                    std::vector<int> ijkm_idx_list = index_list(quadruplet_ext_domain, lmoquadruplet_to_paos_[ijkm]);
+                    auto S_ijkl_ijkm = linalg::doublet(submatrix_rows(*S_ijkl, ijkm_idx_list), X_qno_[ijkm], true, false);
+                    auto T_temp = matmul_4d(quadruples_permuter(T_iajbkcld_[ijkm], i, j, k, m), S_ijkl_ijkm, n_qno_[ijkm], n_qno_[ijkl]);
+                    T_temp *= (*F_lmo_)(l, m);
+                    R_ijkl -= T_temp;
+                }
+
+                if (k != m && i_j_k_l_to_ijkl_.count(ijml_dense) && std::fabs((*F_lmo_)(k, m)) >= F_CUT) {
+                    int ijml = i_j_k_l_to_ijkl_[ijml_dense];
+                    std::vector<int> ijml_idx_list = index_list(quadruplet_ext_domain, lmoquadruplet_to_paos_[ijml]);
+                    auto S_ijkl_ijml = linalg::doublet(submatrix_rows(*S_ijkl, ijml_idx_list), X_qno_[ijml], true, false);
+                    auto T_temp = matmul_4d(quadruples_permuter(T_iajbkcld_[ijml], i, j, m, l), S_ijkl_ijml, n_qno_[ijml], n_qno_[ijkl]);
+                    T_temp *= (*F_lmo_)(k, m);
+                    R_ijkl -= T_temp;
+                }
+
+                if (j != m && i_j_k_l_to_ijkl_.count(imkl_dense) && std::fabs((*F_lmo_)(j, m)) >= F_CUT) {
+                    int imkl = i_j_k_l_to_ijkl_[imkl_dense];
+                    std::vector<int> imkl_idx_list = index_list(quadruplet_ext_domain, lmoquadruplet_to_paos_[imkl]);
+                    auto S_ijkl_imkl = linalg::doublet(submatrix_rows(*S_ijkl, imkl_idx_list), X_qno_[imkl], true, false);
+                    auto T_temp = matmul_4d(quadruples_permuter(T_iajbkcld_[imkl], i, m, k, l), S_ijkl_imkl, n_qno_[imkl], n_qno_[ijkl]);
+                    T_temp *= (*F_lmo_)(j, m);
+                    R_ijkl -= T_temp;
+                }
+
+                if (i != m && i_j_k_l_to_ijkl_.count(mjkl_dense) && std::fabs((*F_lmo_)(i, m)) >= F_CUT) {
+                    int mjkl = i_j_k_l_to_ijkl_[mjkl_dense];
+                    std::vector<int> mjkl_idx_list = index_list(quadruplet_ext_domain, lmoquadruplet_to_paos_[mjkl]);
+                    auto S_ijkl_mjkl = linalg::doublet(submatrix_rows(*S_ijkl, mjkl_idx_list), X_qno_[mjkl], true, false);
+                    auto T_temp = matmul_4d(quadruples_permuter(T_iajbkcld_[mjkl], m, j, k, l), S_ijkl_mjkl, n_qno_[mjkl], n_qno_[ijkl]);
+                    T_temp *= (*F_lmo_)(i, m);
+                    R_ijkl -= T_temp;
+                }
+            }
+
+            // => Update T4 Amplitudes <= //
+            for (int a_ijkl = 0; a_ijkl < nqno_ijkl; ++a_ijkl) {
+                for (int b_ijkl = 0; b_ijkl < nqno_ijkl; ++b_ijkl) {
+                    for (int c_ijkl = 0; c_ijkl < nqno_ijkl; ++c_ijkl) {
+                        for (int d_ijkl = 0; d_ijkl < nqno_ijkl; ++d_ijkl) {
+                            (T_iajbkcld_[ijkl])(a_ijkl, b_ijkl, c_ijkl, d_ijkl) -= (R_ijkl)(a_ijkl, b_ijkl, c_ijkl, d_ijkl) /
+                                ((*e_qno_[ijkl])(a_ijkl) + (*e_qno_[ijkl])(b_ijkl) + (*e_qno_[ijkl])(c_ijkl) + (*e_qno_[ijkl])(d_ijkl) 
+                                    - (*F_lmo_)(i, i) - (*F_lmo_)(j, j) - (*F_lmo_)(k, k) - (*F_lmo_)(l, l));
+                        } // end d_ijkl
+                    } // end c_ijkl
+                } // end b_ijkl
+            } // end a_ijkl
+            
+            R_iajbkcld_rms[ijkl] = std::sqrt(linear_algebra::dot(R_ijkl, R_ijkl)) / (nqno_ijkl * nqno_ijkl);
+        }
+
+        // evaluate convergence
+        e_prev = e_curr;
+        e_ijkl_old = e_ijkl_;
+        // Compute LCCSDT(Q) energy
+        e_curr = compute_q_energy();
+
+        double r_curr = *max_element(R_iajbkcld_rms.begin(), R_iajbkcld_rms.end());
+
+        r_converged = fabs(r_curr) < options_.get_double("R_CONVERGENCE");
+        e_converged = fabs(e_curr - e_prev) < options_.get_double("E_CONVERGENCE");
+
+        std::time_t time_stop = std::time(nullptr);
+
+        outfile->Printf("  @LCCSDT(Q) iter %3d: %16.12f %10.3e %10.3e %8d\n", iteration, e_curr, e_curr - e_prev, r_curr, (int)time_stop - (int)time_start);
+
+        iteration++;
+
+        if (iteration > max_iteration) {
+            throw PSIEXCEPTION("Maximum DLPNO iterations exceeded.");
+        }
+    }
+
+    timer_off("LCCSDT(Q) Iterations");
+
+    return e_curr;
+}
+
 double DLPNOCCSDT_Q::compute_energy() {
     timer_on("DLPNO-CCSDT(Q)");
 
@@ -3457,10 +3650,12 @@ double DLPNOCCSDT_Q::compute_energy() {
     outfile->Printf("    * Screened Quadruplets Contribution:        %16.12f\n", de_lccsdt_q_screened_);
 
     // STEP 3: Iterative (Q) computations
-
+    double E_Q = lccsdt_q_iterations();
+    outfile->Printf("    (Total) DLPNO-(Q) Correlation Energy:       %16.12f\n", E_Q + de_lccsdt_q_screened_);
+    outfile->Printf("    * Screened Quadruplets Contribution:        %16.12f\n", de_lccsdt_q_screened_);
 
     double e_scf = variables_["SCF TOTAL ENERGY"];
-    double e_ccsdt_q_corr = E_Q0 + e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+    double e_ccsdt_q_corr = E_Q + e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
     double e_ccsdt_q_total = e_scf + e_ccsdt_q_corr;
 
     timer_off("DLPNO-CCSDT(Q)");
@@ -3495,6 +3690,8 @@ int read_options(std::string name, Options& options)
         options.add_double("T_CUT_QNO_WEAK_SCALE", 10.0);
         options.add_double("T_CUT_QNO", 1.0e-7);
         options.add_double("T_CUT_QNO_PRE", 1.0e-6);
+        options.add_double("F_CUT_Q", 1.0e-3);
+        options.add_double("T_CUT_ITER_Q", 1.0e-4);
     }
 
     return true;
