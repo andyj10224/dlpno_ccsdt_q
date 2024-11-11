@@ -147,6 +147,8 @@ class DLPNOCCSDT : public DLPNOCCSD_T {
     int nthread_;
     // Energy expression
     double e_lccsdt_;
+    // Energy incurred from TNO rank reduction from (T) to T
+    double dE_T_rank_;
 
     /// Helper function for transforming amplitudes from one TNO space to another
     Tensor<double, 3> matmul_3d_einsums(const Tensor<double, 3> &A, const SharedMatrix &X, int dim_old, int dim_new);
@@ -2185,6 +2187,25 @@ double DLPNOCCSDT::compute_energy() {
     timer_on("DLPNO-CCSDT");
 
     print_header();
+
+    timer_on("DLPNO-CCSDT : delta DLPNO-CCSD(T)");
+
+    int n_lmo_triplets = ijk_to_i_j_k_.size();
+    tno_scale_.clear();
+    tno_scale_.resize(n_lmo_triplets, 1.0);
+
+    double t_cut_tno_full = options_.get_double("T_CUT_TNO_FULL");
+
+    outfile->Printf("    T_CUT_TNO (re)set to %6.3e for full triples \n", t_cut_tno_full);
+    tno_transform(t_cut_tno_full);
+
+    double E_T0_loose = compute_lccsd_t0(true);
+    double E_T_loose = lccsd_t_iterations();
+    dE_T_rank_ = E_T_ - E_T_loose;
+    outfile->Printf("\n  * (Additional) (T) contribution to TNO rank correction: %16.12f\n\n", dE_T_rank_);
+
+    timer_off("DLPNO-CCSDT : delta DLPNO-CCSD(T)");
+
     estimate_memory();
 
     timer_on("DLPNO-CCSDT : Compute ERIs");
@@ -2202,7 +2223,7 @@ double DLPNOCCSDT::compute_energy() {
     timer_off("DLPNO-CCSDT");
 
     double e_scf = variables_["SCF TOTAL ENERGY"];
-    double e_ccsdt_corr = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+    double e_ccsdt_corr = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
     double e_ccsdt_total = e_scf + e_ccsdt_corr;
 
     set_scalar_variable("CCSDT CORRELATION ENERGY", e_ccsdt_corr);
@@ -2230,7 +2251,7 @@ void DLPNOCCSDT::print_results() {
     }
     set_scalar_variable("CC T1 DIAGNOSTIC", t1diag);
 
-    double e_total = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+    double e_total = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
 
     outfile->Printf("  \n");
     outfile->Printf("  Total DLPNO-CCSDT Correlation Energy: %16.12f \n", e_total);
@@ -2240,6 +2261,7 @@ void DLPNOCCSDT::print_results() {
     outfile->Printf("    Dipole Pair Correction:             %16.12f \n", de_dipole_);
     outfile->Printf("    PNO Truncation Correction:          %16.12f \n", de_pno_total_);
     outfile->Printf("    Triples Rank Correction (T0):       %16.12f \n", e_lccsd_t_ - e_lccsd_ - E_T_);
+    outfile->Printf("    Triples Rank Correction (T):        %16.12f \n", dE_T_rank_);
     outfile->Printf("    Houston is (still) a delinquent\n");
     outfile->Printf("\n\n  @Total DLPNO-CCSDT Energy: %16.12f \n", variables_["SCF TOTAL ENERGY"] + e_total);
 }
@@ -2297,10 +2319,10 @@ class DLPNOCCSDT_Q : public DLPNOCCSDT {
     /// Returns a symmetrized version of that matrix (in i <= j <= k <= l ordering)
     Tensor<double, 4> quadruples_permuter(const Tensor<double, 4>& X, int i, int j, int k, int l);
 
-    /// Compute gamma_ijkl
-    void compute_gamma_ijkl();
+    /// Compute gamma_ijkl (and return Q0 energy)
+    double compute_gamma_ijkl(bool store_amplitudes=false);
     /// L_CCSDT(Q) energy
-    double compute_q_energy();
+    double compute_quadruplet_energy(int ijkl, const Tensor<double, 4>& T4);
     /// A function to estimate Full-(Q) memory costs
     void estimate_memory();
     /// L_CCSDT(Q) iterations
@@ -2847,7 +2869,7 @@ void DLPNOCCSDT_Q::estimate_memory() {
 
 }
 
-void DLPNOCCSDT_Q::compute_gamma_ijkl() {
+double DLPNOCCSDT_Q::compute_gamma_ijkl(bool store_amplitudes) {
     timer_on("gamma ijkl");
 
     int naocc = nalpha_ - nfrzc();
@@ -2864,23 +2886,29 @@ void DLPNOCCSDT_Q::compute_gamma_ijkl() {
     K_iajm_list_.clear();
     K_iajb_list_.clear();
     U_iajb_list_.clear();
-
-    gamma_ijkl_.clear();
-    T_iajbkcld_.clear();
+    e_ijkl_.clear();
 
     // Allocate space for intermediates
     K_iabe_list_.resize(n_lmo_quadruplets);
     K_iajm_list_.resize(n_lmo_quadruplets);
     K_iajb_list_.resize(n_lmo_quadruplets);
     U_iajb_list_.resize(n_lmo_quadruplets);
+    e_ijkl_.resize(n_lmo_quadruplets);
 
-    gamma_ijkl_.resize(n_lmo_quadruplets);
-    T_iajbkcld_.resize(n_lmo_quadruplets);
+    if (store_amplitudes) {
+        gamma_ijkl_.clear();
+        T_iajbkcld_.clear();
+
+        gamma_ijkl_.resize(n_lmo_quadruplets);
+        T_iajbkcld_.resize(n_lmo_quadruplets);
+    }
 
     std::time_t time_start = std::time(nullptr);
     std::time_t time_lap = std::time(nullptr);
 
-#pragma omp parallel for schedule(dynamic)
+    double E_Q0 = 0.0;
+
+#pragma omp parallel for schedule(dynamic) reduction(+ : E_Q0)
     for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
         auto &[i, j, k, l] = ijkl_to_i_j_k_l_[ijkl];
         int ij = i_j_to_ij_[i][j], ik = i_j_to_ij_[i][k], il = i_j_to_ij_[i][l], 
@@ -3165,8 +3193,8 @@ void DLPNOCCSDT_Q::compute_gamma_ijkl() {
         }
 
         // => Form all possible gamma_ijkl's over unique (i, j, k, l) permutations in quadruplet ijkl
-        gamma_ijkl_[ijkl] = Tensor<double, 4>("gamma_ijkl", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
-        gamma_ijkl_[ijkl].zero();
+        Tensor<double, 4> gamma_ijkl("gamma_ijkl", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
+        gamma_ijkl.zero();
 
         std::unordered_map<int, Tensor<double, 4>> gamma_ijkl_list;
         
@@ -3227,15 +3255,15 @@ void DLPNOCCSDT_Q::compute_gamma_ijkl() {
 
                 gamma_ijkl_list[ijkl_idx] = gamma_ijkl_perm;
                 sort(Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_buff_a, std::get<perm_idx>(einsum_indices), gamma_ijkl_perm);
-                gamma_ijkl_[ijkl] += gamma_ijkl_buff_a;
+                gamma_ijkl += gamma_ijkl_buff_a;
             } else {
                 Tensor<double, 4> gamma_ijkl_buff_a("gamma_ijkl_buff_a", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
                 sort(Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_buff_a, std::get<perm_idx>(einsum_indices), gamma_ijkl_list[ijkl_idx]);
-                gamma_ijkl_[ijkl] += gamma_ijkl_buff_a;
+                gamma_ijkl += gamma_ijkl_buff_a;
             }
         });
 
-        gamma_ijkl_[ijkl] *= 0.5;
+        gamma_ijkl *= 0.5;
 
         // Form T4 amplitudes from gamma_ijkl
         Tensor<double, 4> T_ijkl("T_ijkl", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
@@ -3245,7 +3273,7 @@ void DLPNOCCSDT_Q::compute_gamma_ijkl() {
             for (int b_ijkl = 0; b_ijkl < nqno_ijkl; ++b_ijkl) {
                 for (int c_ijkl = 0; c_ijkl < nqno_ijkl; ++c_ijkl) {
                     for (int d_ijkl = 0; d_ijkl < nqno_ijkl; ++d_ijkl) {
-                        (T_ijkl)(a_ijkl, b_ijkl, c_ijkl, d_ijkl) = (gamma_ijkl_[ijkl])(a_ijkl, b_ijkl, c_ijkl, d_ijkl) / 
+                        (T_ijkl)(a_ijkl, b_ijkl, c_ijkl, d_ijkl) = (gamma_ijkl)(a_ijkl, b_ijkl, c_ijkl, d_ijkl) / 
                             ((*F_lmo_)(i,i) + (*F_lmo_)(j,j) + (*F_lmo_)(k,k) + (*F_lmo_)(l,l) - (*e_qno_[ijkl])(a_ijkl) 
                             - (*e_qno_[ijkl])(b_ijkl) - (*e_qno_[ijkl])(c_ijkl) - (*e_qno_[ijkl])(d_ijkl));
                     } // end d_ijkl
@@ -3253,8 +3281,24 @@ void DLPNOCCSDT_Q::compute_gamma_ijkl() {
             } // end b_ijkl
         } // end a_ijkl
 
-        // Save amplitudes :)
-        T_iajbkcld_[ijkl] = T_ijkl;
+        // Compute energy contribution
+        double e_quad = compute_quadruplet_energy(ijkl, T_ijkl);
+        e_ijkl_[ijkl] = e_quad;
+        E_Q0 += e_quad;
+
+        if (store_amplitudes) {
+            gamma_ijkl_[ijkl] = gamma_ijkl;
+            T_iajbkcld_[ijkl] = T_ijkl;
+        } else {
+            einsums::for_sequence<4UL>([&](auto idx) {
+                K_iabe_list_[ijkl][idx] = Tensor<double, 3>("null", 0, 0, 0);
+            });
+            einsums::for_sequence<16UL>([&](auto idx) {
+                K_iajm_list_[ijkl][idx] = Tensor<double, 2>("null", 0, 0);
+                K_iajb_list_[ijkl][idx] = Tensor<double, 2>("null", 0, 0);
+                U_iajb_list_[ijkl][idx] = Tensor<double, 2>("null", 0, 0);
+            });
+        }
 
         if (thread == 0) {
             std::time_t time_curr = std::time(nullptr);
@@ -3272,184 +3316,184 @@ void DLPNOCCSDT_Q::compute_gamma_ijkl() {
     outfile->Printf("    Computation of T4 amplitudes complete!!! Time Elapsed: %4d seconds\n\n", time_elapsed);
 
     timer_off("gamma ijkl");
+
+    return E_Q0;
 }
 
-double DLPNOCCSDT_Q::compute_q_energy() {
+double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>& T4) {
 
     int naocc = i_j_to_ij_.size();
-    int n_lmo_pairs = ij_to_i_j_.size();
-    int n_lmo_quadruplets = ijkl_to_i_j_k_l_.size();
-    double E_Q = 0.0;
 
-    e_ijkl_.clear();
-    e_ijkl_.resize(n_lmo_quadruplets, 0.0);
+    auto &[i, j, k, l] = ijkl_to_i_j_k_l_[ijkl];
+    std::vector<int> ijkl_list = {i, j, k, l};
+    const int FOUR = ijkl_list.size();
 
-    timer_on("compute (Q) energy");
+    // number of LMOs in the quadruplet domain
+    const int nlmo_ijkl = lmoquadruplet_to_lmos_[ijkl].size();
+    // number of PAOs in the quadruplet domain (before removing linear dependencies)
+    const int npao_ijkl = lmoquadruplet_to_paos_[ijkl].size();
+    // number of auxiliary functions in the quadruplet domain
+    const int naux_ijkl = lmoquadruplet_to_ribfs_[ijkl].size();
+    // number of quadruplet natural orbitals in quadruplet domain
+    const int nqno_ijkl = n_qno_[ijkl];
 
-#pragma omp parallel for schedule(dynamic, 1) reduction(+ : E_Q)
-    for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
-        auto &[i, j, k, l] = ijkl_to_i_j_k_l_[ijkl];
-        std::vector<int> ijkl_list = {i, j, k, l};
-        const int FOUR = ijkl_list.size();
+    double quadruplet_energy = 0.0;
+    std::unordered_map<int, double> e_perm_energy;
 
-        // number of LMOs in the quadruplet domain
-        const int nlmo_ijkl = lmoquadruplet_to_lmos_[ijkl].size();
-        // number of PAOs in the quadruplet domain (before removing linear dependencies)
-        const int npao_ijkl = lmoquadruplet_to_paos_[ijkl].size();
-        // number of auxiliary functions in the quadruplet domain
-        const int naux_ijkl = lmoquadruplet_to_ribfs_[ijkl].size();
-        // number of quadruplet natural orbitals in quadruplet domain
-        const int nqno_ijkl = n_qno_[ijkl];
+    // outfile->Printf("My lighthouse, my lighthouse \n\n");
 
-        double quadruplet_energy = 0.0;
-        std::unordered_map<int, double> e_perm_energy;
+    std::array<Tensor<double, 4>, 16> T_ijm_list;
+    for (int i_idx = 0; i_idx < ijkl_list.size(); ++i_idx) {
+        int i = ijkl_list[i_idx];
+        for (int j_idx = 0; j_idx < ijkl_list.size(); ++j_idx) {
+            int j = ijkl_list[j_idx];
 
-        std::array<Tensor<double, 4>, 16> T_ijm_list;
-        for (int i_idx = 0; i_idx < ijkl_list.size(); ++i_idx) {
-            int i = ijkl_list[i_idx];
-            for (int j_idx = 0; j_idx < ijkl_list.size(); ++j_idx) {
-                int j = ijkl_list[j_idx];
+            T_ijm_list[i_idx * FOUR + j_idx] = Tensor<double, 4>("T_ijm", nlmo_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
+            T_ijm_list[i_idx * FOUR + j_idx].zero();
 
-                T_ijm_list[i_idx * FOUR + j_idx] = Tensor<double, 4>("T_ijm", nlmo_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
-                T_ijm_list[i_idx * FOUR + j_idx].zero();
+            for (int m_ijkl = 0; m_ijkl < nlmo_ijkl; ++m_ijkl) {
+                int m = lmoquadruplet_to_lmos_[ijkl][m_ijkl];
+                int ijm_dense = i * naocc * naocc + j * naocc + m;
+                if (i_j_k_to_ijk_.count(ijm_dense)) {
+                    int ijm = i_j_k_to_ijk_[ijm_dense];
+                    auto S_ijkl_ijm = submatrix_rows_and_cols(*S_pao_, lmoquadruplet_to_paos_[ijkl], lmotriplet_to_paos_[ijm]);
+                    S_ijkl_ijm = linalg::triplet(X_qno_[ijkl], S_ijkl_ijm, X_tno_[ijm], true, false, false);
+                    auto T_ijm = matmul_3d_einsums(triples_permuter_einsums(T_iajbkc_clone_[ijm], i, j, m), 
+                                                    S_ijkl_ijm, n_tno_[ijm], n_qno_[ijkl]);
 
-                for (int m_ijkl = 0; m_ijkl < nlmo_ijkl; ++m_ijkl) {
-                    int m = lmoquadruplet_to_lmos_[ijkl][m_ijkl];
-                    int ijm_dense = i * naocc * naocc + j * naocc + m;
-                    if (i_j_k_to_ijk_.count(ijm_dense)) {
-                        int ijm = i_j_k_to_ijk_[ijm_dense];
-                        auto S_ijkl_ijm = submatrix_rows_and_cols(*S_pao_, lmoquadruplet_to_paos_[ijkl], lmotriplet_to_paos_[ijm]);
-                        S_ijkl_ijm = linalg::triplet(X_qno_[ijkl], S_ijkl_ijm, X_tno_[ijm], true, false, false);
-                        auto T_ijm = matmul_3d_einsums(triples_permuter_einsums(T_iajbkc_clone_[ijm], i, j, m), 
-                                                        S_ijkl_ijm, n_tno_[ijm], n_qno_[ijkl]);
+                    ::memcpy(&T_ijm_list[i_idx * FOUR + j_idx](m_ijkl, 0, 0, 0), T_ijm.data(), nqno_ijkl * nqno_ijkl * nqno_ijkl * sizeof(double));
+                } // end if
+            } // end m_ijkl
+        } // end j_idx
+    } // end i_idx
 
-                        ::memcpy(&T_ijm_list[i_idx * FOUR + j_idx](m_ijkl, 0, 0, 0), T_ijm.data(), nqno_ijkl * nqno_ijkl * nqno_ijkl * sizeof(double));
-                    } // end if
-                } // end m_ijkl
-            } // end j_idx
-        } // end i_idx
+    // outfile->Printf("Shining through the darkness \n\n");
         
-        einsums::for_sequence<24UL>([&](auto perm_idx) {
-            auto &[i_idx, j_idx, k_idx, l_idx] = quad_perms_long[perm_idx];
-            int i = ijkl_list[i_idx], j = ijkl_list[j_idx], k = ijkl_list[k_idx], l = ijkl_list[l_idx];
-            int ijkl_idx = i * std::pow(naocc, 3) + j * std::pow(naocc, 2) + k * naocc + l;
+    einsums::for_sequence<24UL>([&](auto perm_idx) {
+        auto &[i_idx, j_idx, k_idx, l_idx] = quad_perms_long[perm_idx];
+        int i = ijkl_list[i_idx], j = ijkl_list[j_idx], k = ijkl_list[k_idx], l = ijkl_list[l_idx];
+        int ijkl_idx = i * std::pow(naocc, 3) + j * std::pow(naocc, 2) + k * naocc + l;
 
-            if (!e_perm_energy.count(ijkl_idx)) {
-                // Set up e_perm_energy
-                e_perm_energy[ijkl_idx] = 0.0;
+        if (!e_perm_energy.count(ijkl_idx)) {
+            // Set up e_perm_energy
+            e_perm_energy[ijkl_idx] = 0.0;
 
-                // Get quadruples amplitude
-                Tensor<double, 4> T_ijkl = quadruples_permuter(T_iajbkcld_[ijkl], i, j, k, l);
+            // Get quadruples amplitude
+            Tensor<double, 4> T_ijkl = quadruples_permuter(T4, i, j, k, l);
 
-                // [Q] intermediates
-                // u_{kl}^{ab}K_{ij}_{cd} - 2u_{kl}^{bd}L_{ij}^{ac} + u_{kl}^{cd}L_{ij}^{ab}
-                Tensor<double, 2> U_kl = U_iajb_list_[ijkl][4 * k_idx + l_idx];
-                Tensor<double, 2> K_ij = K_iajb_list_[ijkl][4 * i_idx + j_idx];
-                Tensor<double, 2> L_ij = K_iajb_list_[ijkl][4 * i_idx + j_idx];
-                L_ij *= 2.0;
-                L_ij -= K_iajb_list_[ijkl][4 * j_idx + i_idx];
+            // outfile->Printf("I will follow you \n\n");
 
-                for (int a_ijkl = 0; a_ijkl < nqno_ijkl; ++a_ijkl) {
-                    for (int b_ijkl = 0; b_ijkl < nqno_ijkl; ++b_ijkl) {
-                        for (int c_ijkl = 0; c_ijkl < nqno_ijkl; ++c_ijkl) {
-                            for (int d_ijkl = 0; d_ijkl < nqno_ijkl; ++d_ijkl) {
-                                e_perm_energy[ijkl_idx] += T_ijkl(a_ijkl, b_ijkl, c_ijkl, d_ijkl) * (U_kl(a_ijkl, b_ijkl) * K_ij(c_ijkl, d_ijkl)
-                                    - 2.0 * U_kl(b_ijkl, d_ijkl) * L_ij(a_ijkl, c_ijkl) + U_kl(c_ijkl, d_ijkl) * L_ij(a_ijkl, b_ijkl));
-                            } // end d_ijkl
-                        } // end c_ijkl
-                    } // end b_ijkl
-                } // end a_ijkl
+            // [Q] intermediates
+            // u_{kl}^{ab}K_{ij}_{cd} - 2u_{kl}^{bd}L_{ij}^{ac} + u_{kl}^{cd}L_{ij}^{ab}
+            Tensor<double, 2> U_kl = U_iajb_list_[ijkl][4 * k_idx + l_idx];
+            Tensor<double, 2> K_ij = K_iajb_list_[ijkl][4 * i_idx + j_idx];
+            Tensor<double, 2> L_ij = K_iajb_list_[ijkl][4 * i_idx + j_idx];
+            L_ij *= 2.0;
+            L_ij -= K_iajb_list_[ijkl][4 * j_idx + i_idx];
 
-                // Make a buffer
-                Tensor<double, 4> T_buffer("T_buffer", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
+            for (int a_ijkl = 0; a_ijkl < nqno_ijkl; ++a_ijkl) {
+                for (int b_ijkl = 0; b_ijkl < nqno_ijkl; ++b_ijkl) {
+                    for (int c_ijkl = 0; c_ijkl < nqno_ijkl; ++c_ijkl) {
+                        for (int d_ijkl = 0; d_ijkl < nqno_ijkl; ++d_ijkl) {
+                            e_perm_energy[ijkl_idx] += T_ijkl(a_ijkl, b_ijkl, c_ijkl, d_ijkl) * (U_kl(a_ijkl, b_ijkl) * K_ij(c_ijkl, d_ijkl)
+                                - 2.0 * U_kl(b_ijkl, d_ijkl) * L_ij(a_ijkl, c_ijkl) + U_kl(c_ijkl, d_ijkl) * L_ij(a_ijkl, b_ijkl));
+                        } // end d_ijkl
+                    } // end c_ijkl
+                } // end b_ijkl
+            } // end a_ijkl
 
-                // bar{t}_{ijkl}^{abcd} = -2t_{ijkl}^{abcd} - t_{ijkl}^{cdab} + t_{ijkl}^{bacd}
-                Tensor<double, 4> T_bar = T_ijkl;
-                T_bar *= -2.0;
-                sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::c, index::d, index::a, index::b}, T_ijkl);
-                T_bar -= T_buffer;
-                sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::a, index::c, index::d}, T_ijkl);
-                T_bar += T_buffer;
+            // outfile->Printf("My lighthouse, my lighthouse \n\n");
 
-                // tilde{t}_{ijkl}^{abcd} = (1 + P_{kl}^{cd})[2t_{ijkl}^{dbac} - t_{ijkl}^{bdac}] =>
-                // [2t_{ijkl}^{dbac} - t_{ijkl}^{bdac} + 2t_{ijlk}^{cbad} - t_{ijlk}^{bcad}] =>
-                // 2t_{ijkl}^{dbac} - t_{ijkl}^{bdac} + 2t_{ijkl}^{cbda} - t_{ijkl}^{bcda}
-                sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::d, index::b, index::a, index::c}, T_ijkl);
-                Tensor<double, 4> T_tilde = T_buffer;
-                sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::c, index::b, index::d, index::a}, T_ijkl);
-                T_tilde += T_buffer;
-                T_tilde *= 2.0;
-                sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::d, index::a, index::c}, T_ijkl);
-                T_tilde -= T_buffer;
-                sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::c, index::d, index::a}, T_ijkl);
-                T_tilde -= T_buffer;
+            // Make a buffer
+            Tensor<double, 4> T_buffer("T_buffer", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
 
-                // => alpha and beta contributions <= //
+            // bar{t}_{ijkl}^{abcd} = -2t_{ijkl}^{abcd} - t_{ijkl}^{cdab} + t_{ijkl}^{bacd}
+            Tensor<double, 4> T_bar = T_ijkl;
+            T_bar *= -2.0;
+            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::c, index::d, index::a, index::b}, T_ijkl);
+            T_bar -= T_buffer;
+            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::a, index::c, index::d}, T_ijkl);
+            T_bar += T_buffer;
 
-                // => 2 - P_{cd} contributions
+            // tilde{t}_{ijkl}^{abcd} = (1 + P_{kl}^{cd})[2t_{ijkl}^{dbac} - t_{ijkl}^{bdac}] =>
+            // [2t_{ijkl}^{dbac} - t_{ijkl}^{bdac} + 2t_{ijlk}^{cbad} - t_{ijlk}^{bcad}] =>
+            // 2t_{ijkl}^{dbac} - t_{ijkl}^{bdac} + 2t_{ijkl}^{cbda} - t_{ijkl}^{bcda}
+            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::d, index::b, index::a, index::c}, T_ijkl);
+            Tensor<double, 4> T_tilde = T_buffer;
+            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::c, index::b, index::d, index::a}, T_ijkl);
+            T_tilde += T_buffer;
+            T_tilde *= 2.0;
+            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::d, index::a, index::c}, T_ijkl);
+            T_tilde -= T_buffer;
+            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::c, index::d, index::a}, T_ijkl);
+            T_tilde -= T_buffer;
 
-                Tensor<double, 4> T_bar_dc("T_bar_dc", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
-                sort(Indices{index::a, index::b, index::d, index::c}, &T_bar_dc, Indices{index::a, index::b, index::c, index::d}, T_bar);
-                Tensor<double, 4> T_tilde_dc("T_tilde_dc", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
-                sort(Indices{index::a, index::b, index::d, index::c}, &T_tilde_dc, Indices{index::a, index::b, index::c, index::d}, T_tilde);
+            // outfile->Printf("I will trust the promise \n\n");
 
-                Tensor<double, 2> alpha_ijm_buffer("alpha_ijm_buffer", nlmo_ijkl, nqno_ijkl);
-                einsum(0.0, Indices{index::m, index::d}, &alpha_ijm_buffer, 2.0, Indices{index::m, index::a, index::b, index::c}, T_ijm_list[i_idx * FOUR + j_idx],
-                        Indices{index::a, index::b, index::c, index::d}, T_bar);
-                einsum(1.0, Indices{index::m, index::d}, &alpha_ijm_buffer, -1.0, Indices{index::m, index::a, index::b, index::c}, T_ijm_list[i_idx * FOUR + j_idx],
-                        Indices{index::a, index::b, index::c, index::d}, T_bar_dc);
+            // => alpha and beta contributions <= //
 
-                Tensor<double, 2> beta_ijm_buffer("beta_ijm_buffer", nlmo_ijkl, nqno_ijkl);
-                einsum(0.0, Indices{index::m, index::d}, &beta_ijm_buffer, 2.0, Indices{index::m, index::a, index::b, index::c}, T_ijm_list[i_idx * FOUR + j_idx],
-                        Indices{index::a, index::b, index::c, index::d}, T_tilde);
-                einsum(1.0, Indices{index::m, index::d}, &beta_ijm_buffer, -1.0, Indices{index::m, index::a, index::b, index::c}, T_ijm_list[i_idx * FOUR + j_idx],
-                        Indices{index::a, index::b, index::c, index::d}, T_tilde_dc);
+            // => 2 - P_{cd} contributions
 
-                Tensor<double, 2> K_lk_T("K_lk_T", nlmo_ijkl, nqno_ijkl);
-                sort(Indices{index::m, index::d}, &K_lk_T, Indices{index::d, index::m}, K_iajm_list_[ijkl][l_idx * 4 + k_idx]);
-                Tensor<double, 2> K_kl_T("K_kl_T", nlmo_ijkl, nqno_ijkl);
-                sort(Indices{index::m, index::d}, &K_kl_T, Indices{index::d, index::m}, K_iajm_list_[ijkl][k_idx * 4 + l_idx]);
+            Tensor<double, 4> T_bar_dc("T_bar_dc", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
+            sort(Indices{index::a, index::b, index::d, index::c}, &T_bar_dc, Indices{index::a, index::b, index::c, index::d}, T_bar);
+            Tensor<double, 4> T_tilde_dc("T_tilde_dc", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
+            sort(Indices{index::a, index::b, index::d, index::c}, &T_tilde_dc, Indices{index::a, index::b, index::c, index::d}, T_tilde);
 
-                e_perm_energy[ijkl_idx] += 2.0 * (linear_algebra::dot(alpha_ijm_buffer, K_lk_T) + linear_algebra::dot(beta_ijm_buffer, K_kl_T));
+            Tensor<double, 2> alpha_ijm_buffer("alpha_ijm_buffer", nlmo_ijkl, nqno_ijkl);
+            einsum(0.0, Indices{index::m, index::d}, &alpha_ijm_buffer, 2.0, Indices{index::m, index::a, index::b, index::c}, T_ijm_list[i_idx * FOUR + j_idx],
+                    Indices{index::a, index::b, index::c, index::d}, T_bar);
+            einsum(1.0, Indices{index::m, index::d}, &alpha_ijm_buffer, -1.0, Indices{index::m, index::a, index::b, index::c}, T_ijm_list[i_idx * FOUR + j_idx],
+                    Indices{index::a, index::b, index::c, index::d}, T_bar_dc);
 
-                // 2 - P_{kl} contributions
-                int k_ijkl = std::find(lmoquadruplet_to_lmos_[ijkl].begin(), lmoquadruplet_to_lmos_[ijkl].end(), k) - lmoquadruplet_to_lmos_[ijkl].begin();
-                Tensor<double, 3> T_ijk = T_ijm_list[i_idx * FOUR + j_idx](k_ijkl, All, All, All);
-                int l_ijkl = std::find(lmoquadruplet_to_lmos_[ijkl].begin(), lmoquadruplet_to_lmos_[ijkl].end(), l) - lmoquadruplet_to_lmos_[ijkl].begin();
-                Tensor<double, 3> T_ijl = T_ijm_list[i_idx * FOUR + j_idx](l_ijkl, All, All, All);
+            Tensor<double, 2> beta_ijm_buffer("beta_ijm_buffer", nlmo_ijkl, nqno_ijkl);
+            einsum(0.0, Indices{index::m, index::d}, &beta_ijm_buffer, 2.0, Indices{index::m, index::a, index::b, index::c}, T_ijm_list[i_idx * FOUR + j_idx],
+                    Indices{index::a, index::b, index::c, index::d}, T_tilde);
+            einsum(1.0, Indices{index::m, index::d}, &beta_ijm_buffer, -1.0, Indices{index::m, index::a, index::b, index::c}, T_ijm_list[i_idx * FOUR + j_idx],
+                    Indices{index::a, index::b, index::c, index::d}, T_tilde_dc);
 
-                Tensor<double, 3> T_ijk_bar("T_ijk_bar", nqno_ijkl, nqno_ijkl, nqno_ijkl);
-                einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijk_bar, 1.0, Indices{index::a, index::b, index::c, index::d}, T_bar,
-                        Indices{index::a, index::b, index::e}, T_ijk);
-                Tensor<double, 3> T_ijl_bar("T_ijl_bar", nqno_ijkl, nqno_ijkl, nqno_ijkl);
-                einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijl_bar, 1.0, Indices{index::a, index::b, index::c, index::d}, T_bar,
-                        Indices{index::a, index::b, index::e}, T_ijl);
-                Tensor<double, 3> T_ijk_tilde("T_ijk_tilde", nqno_ijkl, nqno_ijkl, nqno_ijkl);
-                einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijk_tilde, 1.0, Indices{index::a, index::b, index::c, index::d}, T_tilde,
-                        Indices{index::a, index::b, index::e}, T_ijk);
-                Tensor<double, 3> T_ijl_tilde("T_ijl_tilde", nqno_ijkl, nqno_ijkl, nqno_ijkl);
-                einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijl_tilde, 1.0, Indices{index::a, index::b, index::c, index::d}, T_tilde,
-                        Indices{index::a, index::b, index::e}, T_ijl);
+            Tensor<double, 2> K_lk_T("K_lk_T", nlmo_ijkl, nqno_ijkl);
+            sort(Indices{index::m, index::d}, &K_lk_T, Indices{index::d, index::m}, K_iajm_list_[ijkl][l_idx * 4 + k_idx]);
+            Tensor<double, 2> K_kl_T("K_kl_T", nlmo_ijkl, nqno_ijkl);
+            sort(Indices{index::m, index::d}, &K_kl_T, Indices{index::d, index::m}, K_iajm_list_[ijkl][k_idx * 4 + l_idx]);
 
-                Tensor<double, 3> g_kdce_T("g_kdce_T", nqno_ijkl, nqno_ijkl, nqno_ijkl);
-                sort(Indices{index::e, index::c, index::d}, &g_kdce_T, Indices{index::d, index::c, index::e}, K_iabe_list_[ijkl][k_idx]);
-                Tensor<double, 3> g_ldce_T("g_ldce_T", nqno_ijkl, nqno_ijkl, nqno_ijkl);
-                sort(Indices{index::e, index::c, index::d}, &g_ldce_T, Indices{index::d, index::c, index::e}, K_iabe_list_[ijkl][l_idx]);
+            e_perm_energy[ijkl_idx] += 2.0 * (linear_algebra::dot(alpha_ijm_buffer, K_lk_T) + linear_algebra::dot(beta_ijm_buffer, K_kl_T));
 
-                e_perm_energy[ijkl_idx] += -4.0 * linear_algebra::dot(T_ijk_bar, g_ldce_T) + 2.0 * linear_algebra::dot(T_ijl_bar, g_kdce_T);
-                e_perm_energy[ijkl_idx] += -4.0 * linear_algebra::dot(T_ijl_tilde, g_kdce_T) + 2.0 * linear_algebra::dot(T_ijk_tilde, g_ldce_T);
+            // outfile->Printf("You will carry me safe to shore \n\n");
 
-                quadruplet_energy += e_perm_energy[ijkl_idx];
-            }
-        });
+            // 2 - P_{kl} contributions
+            int k_ijkl = std::find(lmoquadruplet_to_lmos_[ijkl].begin(), lmoquadruplet_to_lmos_[ijkl].end(), k) - lmoquadruplet_to_lmos_[ijkl].begin();
+            Tensor<double, 3> T_ijk = T_ijm_list[i_idx * FOUR + j_idx](k_ijkl, All, All, All);
+            int l_ijkl = std::find(lmoquadruplet_to_lmos_[ijkl].begin(), lmoquadruplet_to_lmos_[ijkl].end(), l) - lmoquadruplet_to_lmos_[ijkl].begin();
+            Tensor<double, 3> T_ijl = T_ijm_list[i_idx * FOUR + j_idx](l_ijkl, All, All, All);
+
+            Tensor<double, 3> T_ijk_bar("T_ijk_bar", nqno_ijkl, nqno_ijkl, nqno_ijkl);
+            einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijk_bar, 1.0, Indices{index::a, index::b, index::c, index::d}, T_bar,
+                    Indices{index::a, index::b, index::e}, T_ijk);
+            Tensor<double, 3> T_ijl_bar("T_ijl_bar", nqno_ijkl, nqno_ijkl, nqno_ijkl);
+            einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijl_bar, 1.0, Indices{index::a, index::b, index::c, index::d}, T_bar,
+                    Indices{index::a, index::b, index::e}, T_ijl);
+            Tensor<double, 3> T_ijk_tilde("T_ijk_tilde", nqno_ijkl, nqno_ijkl, nqno_ijkl);
+            einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijk_tilde, 1.0, Indices{index::a, index::b, index::c, index::d}, T_tilde,
+                    Indices{index::a, index::b, index::e}, T_ijk);
+            Tensor<double, 3> T_ijl_tilde("T_ijl_tilde", nqno_ijkl, nqno_ijkl, nqno_ijkl);
+            einsum(0.0, Indices{index::e, index::c, index::d}, &T_ijl_tilde, 1.0, Indices{index::a, index::b, index::c, index::d}, T_tilde,
+                    Indices{index::a, index::b, index::e}, T_ijl);
+
+            Tensor<double, 3> g_kdce_T("g_kdce_T", nqno_ijkl, nqno_ijkl, nqno_ijkl);
+            sort(Indices{index::e, index::c, index::d}, &g_kdce_T, Indices{index::d, index::c, index::e}, K_iabe_list_[ijkl][k_idx]);
+            Tensor<double, 3> g_ldce_T("g_ldce_T", nqno_ijkl, nqno_ijkl, nqno_ijkl);
+            sort(Indices{index::e, index::c, index::d}, &g_ldce_T, Indices{index::d, index::c, index::e}, K_iabe_list_[ijkl][l_idx]);
+
+            e_perm_energy[ijkl_idx] += -4.0 * linear_algebra::dot(T_ijk_bar, g_ldce_T) + 2.0 * linear_algebra::dot(T_ijl_bar, g_kdce_T);
+            e_perm_energy[ijkl_idx] += -4.0 * linear_algebra::dot(T_ijl_tilde, g_kdce_T) + 2.0 * linear_algebra::dot(T_ijk_tilde, g_ldce_T);
+
+            quadruplet_energy += e_perm_energy[ijkl_idx];
+
+            // outfile->Printf("Safe to shore! \n\n");
+        }
+    });
         
-        e_ijkl_[ijkl] = quadruplet_energy;
-        E_Q += quadruplet_energy;
-    }
-
-    timer_off("compute (Q) energy");
-
-    return E_Q;
+    return quadruplet_energy;
 }
 
 double DLPNOCCSDT_Q::lccsdt_q_iterations() {
@@ -3593,8 +3637,17 @@ double DLPNOCCSDT_Q::lccsdt_q_iterations() {
         // evaluate convergence
         e_prev = e_curr;
         e_ijkl_old = e_ijkl_;
+
         // Compute LCCSDT(Q) energy
-        e_curr = compute_q_energy();
+        timer_on("Compute (Q) Energy");
+        e_curr = 0.0;
+#pragma omp parallel for schedule(dynamic, 1) reduction(+ : e_curr)
+        for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
+            double e_ijkl = compute_quadruplet_energy(ijkl, T_iajbkcld_[ijkl]);
+            e_ijkl_[ijkl] = e_ijkl;
+            e_curr += e_ijkl;
+        }
+        timer_off("Compute (Q) Energy");
 
         double r_curr = *max_element(R_iajbkcld_rms.begin(), R_iajbkcld_rms.end());
 
@@ -3644,9 +3697,7 @@ double DLPNOCCSDT_Q::compute_energy() {
 
     quadruples_sparsity(true);
     qno_transform(t_cut_qno_pre);
-    estimate_memory();
-    compute_gamma_ijkl();
-    double E_Q0_pre = compute_q_energy();
+    double E_Q0_pre = compute_gamma_ijkl(false);
     outfile->Printf("    (Initial) DLPNO-(Q0) Correlation Energy: %16.12f\n\n", E_Q0_pre);
 
     // Step 2: Compute DLPNO-CCSDT(Q0) energy with surviving quadruplets
@@ -3654,38 +3705,62 @@ double DLPNOCCSDT_Q::compute_energy() {
     outfile->Printf("     Eliminated all quadruplets with energy less than %6.3e Eh... \n\n", options_.get_double("T_CUT_QUADS_WEAK"));
     quadruples_sparsity(false);
     outfile->Printf("    * Energy Contribution From Screened Quadruplets: %.12f \n\n", de_lccsdt_q_screened_);
-
-    // Sort quadruplets into "strong" and "weak" quadruplets
-    sort_quadruplets(E_Q0_pre);
-
-    double t_cut_qno_strong_scale = options_.get_double("T_CUT_QNO_STRONG_SCALE");
-    double t_cut_qno_weak_scale = options_.get_double("T_CUT_QNO_WEAK_SCALE");
-    outfile->Printf("     T_CUT_QNO (re)set to %6.3e for strong triples \n", t_cut_qno * t_cut_qno_strong_scale);
-    outfile->Printf("     T_CUT_QNO (re)set to %6.3e for weak triples   \n\n", t_cut_qno * t_cut_qno_weak_scale);
+    
+    outfile->Printf("     T_CUT_QNO (re)set to %6.3e \n", options_.get_double("T_CUT_QNO"));
     outfile->Printf("     T_CUT_DO  (re)set to %6.3e \n", options_.get_double("T_CUT_DO_QUADS"));
     outfile->Printf("     T_CUT_MKN (re)set to %6.3e \n\n", options_.get_double("T_CUT_MKN_QUADS"));
 
     qno_transform(t_cut_qno);
-    estimate_memory(); // TODO: write
-    compute_gamma_ijkl();
-    double E_Q0 = compute_q_energy();
+    double E_Q0 = compute_gamma_ijkl(false);
     outfile->Printf("    (Total) DLPNO-(Q0) Correlation Energy:      %16.12f\n", E_Q0 + de_lccsdt_q_screened_);
     outfile->Printf("    * Screened Quadruplets Contribution:        %16.12f\n", de_lccsdt_q_screened_);
 
-    // STEP 3: Iterative (Q) computations
-    double E_Q = lccsdt_q_iterations();
-    outfile->Printf("    (Total) DLPNO-(Q) Correlation Energy:       %16.12f\n", E_Q + de_lccsdt_q_screened_);
-    outfile->Printf("    * Screened Quadruplets Contribution:        %16.12f\n", de_lccsdt_q_screened_);
-
     double e_scf = variables_["SCF TOTAL ENERGY"];
-    double e_ccsdt_q_corr = E_Q + de_lccsdt_q_screened_ + e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
-    double e_ccsdt_q_total = e_scf + e_ccsdt_q_corr;
+    double e_ccsdt_q0_corr = E_Q0 + de_lccsdt_q_screened_ + e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+    double e_ccsdt_q0_total = e_scf + e_ccsdt_q0_corr;
 
-    outfile->Printf("\n\n  @Total DLPNO-CCSDT(Q) Energy: %16.12f\n", e_ccsdt_q_total);
+    outfile->Printf("\n\n  @Total DLPNO-CCSDT(Q0) Energy: %16.12f\n", e_ccsdt_q0_total);
+
+    double e_total = e_ccsdt_q0_total;
+
+    if (!options_.get_bool("Q0_ONLY")) {
+        // STEP 3: Iterative (Q) computations
+        outfile->Printf("\n\n  ==> Computing Full Iterative (Q) <==\n\n");
+
+        double t_cut_qno_strong_scale = options_.get_double("T_CUT_QNO_STRONG_SCALE");
+        double t_cut_qno_weak_scale = options_.get_double("T_CUT_QNO_WEAK_SCALE");
+        outfile->Printf("     T_CUT_QNO (re)set to %6.3e for strong triples \n", t_cut_qno * t_cut_qno_strong_scale);
+        outfile->Printf("     T_CUT_QNO (re)set to %6.3e for weak triples   \n\n", t_cut_qno * t_cut_qno_weak_scale);
+
+        // Sort quadruplets into "strong" and "weak" quadruplets
+        sort_quadruplets(E_Q0);
+        qno_transform(t_cut_qno);
+        estimate_memory();
+
+        double E_Q0_crude = compute_gamma_ijkl(true);
+        double E_Q = lccsdt_q_iterations();
+        double dE_Q = E_Q - E_Q0_crude;
+
+        outfile->Printf("\n");
+        outfile->Printf("    DLPNO-(Q0) energy at looser tolerance:      %16.12f\n", E_Q0_crude);
+        outfile->Printf("    DLPNO-(Q)  energy at looser tolerance:      %16.12f\n", E_Q);
+        outfile->Printf("    * Net Iterative (Q) contribution:           %16.12f\n\n", dE_Q);
+
+        outfile->Printf("    (Total) DLPNO-(Q) Correlation Energy:       %16.12f\n", E_Q0 + dE_Q + de_lccsdt_q_screened_);
+        outfile->Printf("    * DLPNO-(Q0) Contribution:                  %16.12f\n", E_Q0);
+        outfile->Printf("    * DLPNO-(Q) Contribution:                   %16.12f\n", dE_Q);
+        outfile->Printf("    * Screened Quadruplets Contribution:        %16.12f\n", de_lccsdt_q_screened_);
+
+        double e_ccsdt_q_corr = E_Q0 + dE_Q + de_lccsdt_q_screened_ + e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+        double e_ccsdt_q_total = e_scf + e_ccsdt_q_corr;
+        e_total = e_ccsdt_q_total;
+
+        outfile->Printf("\n\n  @Total DLPNO-CCSDT(Q) Energy: %16.12f\n", e_ccsdt_q_total);
+    }
 
     timer_off("DLPNO-CCSDT(Q)");
 
-    return e_ccsdt_q_total;
+    return e_total;
 }
 
 extern "C" PSI_API
@@ -3703,18 +3778,22 @@ int read_options(std::string name, Options& options)
         /*- Perform CC3 instead of full triples? -*/
         options.add_bool("DLPNO_CC3", false);
 
+        // => Triples Options <= //
+        options.add_double("T_CUT_TNO_FULL", 1.0e-7);
+
         // => Quadruples Options <= //
         options.add_bool("RUN_Q", false);
+        options.add_bool("Q0_ONLY", false);
         options.add_bool("QUADS_MAX_WEAK_PAIRS", 3);
         options.add_double("T_CUT_QUADS_WEAK", 1.0e-8);
         options.add_double("T_CUT_MKN_QUADS_PRE", 1.0e-1);
         options.add_double("T_CUT_MKN_QUADS", 1.0e-2);
         options.add_double("T_CUT_DO_QUADS_PRE", 2.0e-2);
         options.add_double("T_CUT_DO_QUADS", 1.0e-2);
-        options.add_double("T_CUT_QNO_STRONG_SCALE", 1.0);
+        options.add_double("T_CUT_QNO_STRONG_SCALE", 2.0);
         options.add_double("T_CUT_QNO_WEAK_SCALE", 10.0);
-        options.add_double("T_CUT_QNO", 1.0e-7);
-        options.add_double("T_CUT_QNO_PRE", 1.0e-6);
+        options.add_double("T_CUT_QNO", 1.0e-6);
+        options.add_double("T_CUT_QNO_PRE", 1.0e-5);
         options.add_double("F_CUT_Q", 1.0e-3);
         options.add_double("T_CUT_ITER_Q", 1.0e-4);
     }
