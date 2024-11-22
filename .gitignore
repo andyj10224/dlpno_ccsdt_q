@@ -1,3 +1,9 @@
 CMakeFiles/*
 __pycache__/*
 CMakeCache.txt
+grimme/*
+ozones/*
+alkanes/*
+waterclusters/*
+pericyclic/*
+hcno/*

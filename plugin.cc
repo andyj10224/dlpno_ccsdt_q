@@ -48,6 +48,7 @@
 #include "/home/aj48384/github/psi4/psi4/src/psi4/dlpno/sparse.h"
 
 #include <memory>
+#include <algorithm>
 #include <unordered_map>
 
 #include "einsums/Tensor.hpp"
@@ -140,6 +141,8 @@ class DLPNOCCSDT : public DLPNOCCSD_T {
     std::vector<Tensor<double, 3>> T_iajbkc_clone_;
     // Contravariant Triples Amplitudes (from Koch 2020)
     std::vector<Tensor<double, 3>> U_iajbkc_;
+    // List of triples sorted by number of TNOs
+    std::vector<int> sorted_triplets_;
 
     // Run CC3 only?
     bool cc3_;
@@ -264,7 +267,8 @@ void DLPNOCCSDT::estimate_memory() {
     size_t S_tno_tno_large = 0;
 
 #pragma omp parallel for reduction(+ : K_iojv_memory, K_ivov_memory, K_ivvv_memory, qij_memory, qia_memory, qab_memory, S_tno_osv_small, S_tno_osv_large, S_tno_pno_small, S_tno_pno_med, S_tno_pno_large, S_tno_tno_small, S_tno_tno_large)
-    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+    for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+        int ijk = sorted_triplets_[ijk_sorted];
         auto &[i, j, k] = ijk_to_i_j_k_[ijk];
         int ii = i_j_to_ij_[i][i], jj = i_j_to_ij_[j][j], kk = i_j_to_ij_[k][k];
         int ij = i_j_to_ij_[i][j], jk = i_j_to_ij_[j][k], ik = i_j_to_ij_[i][k];
@@ -395,8 +399,9 @@ void DLPNOCCSDT::compute_integrals() {
     q_ov_.resize(n_lmo_triplets);
     q_vv_.resize(n_lmo_triplets);
 
-#pragma omp parallel for schedule(dynamic)
-    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+#pragma omp parallel for schedule(dynamic, 1)
+    for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+        int ijk = sorted_triplets_[ijk_sorted];
         int i, j, k;
         std::tie(i, j, k) = ijk_to_i_j_k_[ijk];
         int ij = i_j_to_ij_[i][j], jk = i_j_to_ij_[j][k], ik = i_j_to_ij_[i][k];
@@ -592,8 +597,9 @@ void DLPNOCCSDT::compute_tno_overlaps() {
     S_ijk_mlj_.resize(n_lmo_triplets);
     S_ijk_mlk_.resize(n_lmo_triplets);
 
-#pragma omp parallel for schedule(dynamic)
-    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+#pragma omp parallel for schedule(dynamic, 1)
+    for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+        int ijk = sorted_triplets_[ijk_sorted];
         auto &[i, j, k] = ijk_to_i_j_k_[ijk];
         int ii = i_j_to_ij_[i][i], jj = i_j_to_ij_[j][j], kk = i_j_to_ij_[k][k];
         int ij = i_j_to_ij_[i][j], jk = i_j_to_ij_[j][k], ik = i_j_to_ij_[i][k];
@@ -742,7 +748,8 @@ void DLPNOCCSDT::compute_R_ia_triples(std::vector<SharedMatrix>& R_ia, std::vect
 
     // Looped over unique triplets (Koch Algorithm 1)
 #pragma omp parallel for schedule(dynamic, 1)
-    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+    for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+        int ijk = sorted_triplets_[ijk_sorted];
         auto &[i, j, k] = ijk_to_i_j_k_[ijk];
         int ii = i_j_to_ij_[i][i], jj = i_j_to_ij_[j][j], kk = i_j_to_ij_[k][k];
 
@@ -814,7 +821,8 @@ void DLPNOCCSDT::compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::
 
 // Looped over unique triplets (Koch Algorithm 1)
 #pragma omp parallel for schedule(dynamic, 1)
-    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+    for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+        int ijk = sorted_triplets_[ijk_sorted];
         auto &[i, j, k] = ijk_to_i_j_k_[ijk];
         int ij = i_j_to_ij_[i][j], jk = i_j_to_ij_[j][k], ik = i_j_to_ij_[i][k];
 
@@ -976,7 +984,8 @@ void DLPNOCCSDT::compute_R_iajbkc_cc3(std::vector<SharedMatrix>& R_iajbkc) {
     const double F_CUT = options_.get_double("F_CUT_T");
 
 #pragma omp parallel for schedule(dynamic, 1)
-    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+    for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+        int ijk = sorted_triplets_[ijk_sorted];
         auto &[i, j, k] = ijk_to_i_j_k_[ijk];
 
         int ntno_ijk = n_tno_[ijk];
@@ -1226,7 +1235,8 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
     size_t n_lmo_triplets = ijk_to_i_j_k_.size();
 
 #pragma omp parallel for schedule(dynamic, 1)
-    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+    for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+        int ijk = sorted_triplets_[ijk_sorted];
         auto &[i, j, k] = ijk_to_i_j_k_[ijk];
 
         int ntno_ijk = n_tno_[ijk];
@@ -1285,8 +1295,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         std::vector<Tensor<double, 1>> T_i_list = {T_i, T_j, T_k};
         std::vector<Tensor<double, 2>> q_io_t1_list = {q_io_t1, q_jo_t1, q_ko_t1};
         std::vector<Tensor<double, 2>> q_iv_t1_list = {q_iv_t1, q_jv_t1, q_kv_t1};
-
-        // outfile->Printf("With a thousand hallelujahs!\n");
 
         // => Form Fock Matrix Intermediates <= //
 
@@ -1353,8 +1361,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             // Add the F_ld contribution to F_ad
             einsum(1.0, Indices{index::a, index::d}, &F_ad, -1.0, Indices{index::m, index::a}, T_n_ijk_[ijk], Indices{index::m, index::d}, F_ld);
         }
-
-        // outfile->Printf("We magnify Your name!\n");
 
         // ==> Stopping point 10/22 10:02 AM <== //
 
@@ -1470,8 +1476,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             } // end l_ijk
         } // end idx
 
-        // outfile->Printf("You alone deserve the glory\n");
-
         // => Stopping point 10/22 3:45 PM <= //
 
         std::vector<std::tuple<int, int, int>> long_perms = {std::make_tuple(i, j, k), std::make_tuple(i, k, j),
@@ -1571,8 +1575,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             }
         }
 
-        // outfile->Printf("The honor and the praise\n");
-
         // Lesiuk Eq. 11a (flip sign)
         std::vector<Tensor<double, 3>> Wperms(long_perms.size());
 
@@ -1625,8 +1627,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             }
         }
 
-        // outfile->Printf("Lord Jesus, this song is forever Yours\n");
-
         // => STEP 2: SHORT PERMUTATION TERMS <= //
         std::vector<std::tuple<int, int, int>> short_perms = {std::make_tuple(i, j, k), std::make_tuple(j, i, k), std::make_tuple(k, j, i)};
         std::vector<std::tuple<int, int, int>> short_perms_idx = {std::make_tuple(0, 1, 2), std::make_tuple(1, 0, 2), std::make_tuple(2, 1, 0)};
@@ -1654,8 +1654,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             einsum(1.0, Indices{index::l}, &chi_li_list[idx], 1.0, Indices{index::Q, index::d, index::l}, q_vo, Indices{index::Q, index::d}, chi_li_temp);
         }
 
-        // outfile->Printf("A thousand hallelujahs and a thousand more\n");
-
         // Lesiuk Eq. 12b
         Tensor<double, 2> chi_ad("chi_ad", ntno_ijk, ntno_ijk); {
             chi_ad = F_ad;
@@ -1667,8 +1665,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             U_lm -= T_lm_T;
             einsum(1.0, Indices{index::a, index::d}, &chi_ad, -1.0, Indices{index::m, index::l, index::e, index::a}, U_lm, Indices{index::m, index::l, index::e, index::d}, K_ldme_T);
         }
-
-        // outfile->Printf("Who else would die for our redemption\n");
 
         // chi_jklm, chi_iklm, chi_jilm (Lesiuk Eq. 13a)
         std::vector<Tensor<double, 2>> chi_jk_list(short_perms.size());
@@ -1698,8 +1694,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             einsum(1.0, Indices{index::l, index::m}, &chi_jk_list[idx], 1.0, Indices{index::Q, index::e, index::l}, chi_jk_temp_T, Indices{index::Q, index::e, index::m}, q_vo);
         }
 
-        // outfile->Printf("Whose resurrection means I'll rise\n");
-
         // chi_bdce (Lesiuk Eq. 13b, different order b/c different T1 convention)
         // Praise... to the Lord... only 20 lines
         Tensor<double, 4> chi_dbec("chi_dbec", ntno_ijk, ntno_ijk, ntno_ijk, ntno_ijk); {
@@ -1716,8 +1710,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             sort(Indices{index::d, index::e, index::b, index::c}, &chi_dbec_temp, Indices{index::d, index::b, index::e, index::c}, chi_dbec);
             chi_dbec = chi_dbec_temp;
         }
-
-        // outfile->Printf("There isn't time enough to sing of what You've done\n");
 
         // Lesiuk Eq. 14a (chi_lida, chi_ljda, chi_lkda)
         std::vector<Tensor<double, 3>> chi_lida_list(short_perms.size());
@@ -1740,8 +1732,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
 
             einsum(1.0, Indices{index::l, index::d, index::a}, &chi_lida_list[idx], -1.0, Indices{index::m, index::e, index::l, index::d}, K_ldme_T2, Indices{index::m, index::e, index::a}, T_im);
         }
-
-        // outfile->Printf("But I have eternity to try\n");
 
         // Lesiuk Eq. 14b (chi_ldai, chi_ldaj, chi_ldak)
         std::vector<Tensor<double, 3>> chi_ldai_list(short_perms.size());
@@ -1770,8 +1760,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             // (l, d, m, e) (m, a, e) => (a, d, l)
             einsum(1.0, Indices{index::l, index::d, index::a}, &chi_ldai_list[idx], 1.0, Indices{index::l, index::d, index::m, index::e}, K_ldme, Indices{index::m, index::e, index::a}, U_mi);
         }
-
-        // outfile->Printf("Praise to the Lord\n");
 
         std::vector<Tensor<double, 3>> Vperms(short_perms.size());
 
@@ -1872,8 +1860,6 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             } // end l_ijk
         } // end idx
 
-        // outfile->Printf("To the lamb, to the KING of heaven\n");
-
         // Flush Vperms
         for (int a_ijk = 0; a_ijk < ntno_ijk; a_ijk++) {
             for (int b_ijk = 0; b_ijk < ntno_ijk; b_ijk++) {
@@ -1916,7 +1902,8 @@ void DLPNOCCSDT::lccsdt_iterations() {
         Rn_iajb[ij] = std::make_shared<Matrix>(n_pno_[ij], n_pno_[ij]);
     }
 
-    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+    for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+        int ijk = sorted_triplets_[ijk_sorted];
         R_iajbkc[ijk] = std::make_shared<Matrix>(n_tno_[ijk], n_tno_[ijk] * n_tno_[ijk]);
     }
 
@@ -1987,7 +1974,8 @@ void DLPNOCCSDT::lccsdt_iterations() {
         }
 
 #pragma omp parallel for schedule(dynamic, 1)
-        for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+        for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+            int ijk = sorted_triplets_[ijk_sorted];
             auto &[i, j, k] = ijk_to_i_j_k_[ijk];
             int nlmo_ijk = lmotriplet_to_lmos_[ijk].size();
 
@@ -2007,7 +1995,8 @@ void DLPNOCCSDT::lccsdt_iterations() {
 
         // Create T_iajbkc_clone intermediate
 #pragma omp parallel for schedule(dynamic, 1)
-        for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+        for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+            int ijk = sorted_triplets_[ijk_sorted];
             auto &[i, j, k] = ijk_to_i_j_k_[ijk];
 
             T_iajbkc_clone_[ijk] = Tensor<double, 3>("T_ijk", n_tno_[ijk], n_tno_[ijk], n_tno_[ijk]);
@@ -2080,7 +2069,8 @@ void DLPNOCCSDT::lccsdt_iterations() {
 
         // Update triples amplitude
 #pragma omp parallel for schedule(dynamic, 1)
-        for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+        for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+            int ijk = sorted_triplets_[ijk_sorted];
             auto &[i, j, k] = ijk_to_i_j_k_[ijk];
             for (int a_ijk = 0; a_ijk < n_tno_[ijk]; ++a_ijk) {
                 for (int b_ijk = 0; b_ijk < n_tno_[ijk]; ++b_ijk) {
@@ -2188,6 +2178,7 @@ double DLPNOCCSDT::compute_energy() {
 
     print_header();
 
+    /*
     timer_on("DLPNO-CCSDT : delta DLPNO-CCSD(T)");
 
     int n_lmo_triplets = ijk_to_i_j_k_.size();
@@ -2205,6 +2196,27 @@ double DLPNOCCSDT::compute_energy() {
     outfile->Printf("\n  * (Additional) (T) contribution to TNO rank correction: %16.12f\n\n", dE_T_rank_);
 
     timer_off("DLPNO-CCSDT : delta DLPNO-CCSD(T)");
+    */
+    dE_T_rank_ = 0.0;
+
+    // Sort list of triplets based on number of TNOs (for parallel efficiency)
+    int n_lmo_triplets = ijk_to_i_j_k_.size();
+    std::vector<std::pair<int, int>> ijk_tnos(n_lmo_triplets);
+
+#pragma omp parallel for
+    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+        ijk_tnos[ijk] = std::make_pair(ijk, n_tno_[ijk]);
+    }
+    
+    std::sort(ijk_tnos.begin(), ijk_tnos.end(), [&](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+        return (a.second > b.second);
+    });
+
+    sorted_triplets_.resize(n_lmo_triplets);
+#pragma omp parallel for
+    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+        sorted_triplets_[ijk] = ijk_tnos[ijk].first;
+    }
 
     estimate_memory();
 
@@ -2262,8 +2274,8 @@ void DLPNOCCSDT::print_results() {
     outfile->Printf("    PNO Truncation Correction:          %16.12f \n", de_pno_total_);
     outfile->Printf("    Triples Rank Correction (T0):       %16.12f \n", e_lccsd_t_ - e_lccsd_ - E_T_);
     outfile->Printf("    Triples Rank Correction (T):        %16.12f \n", dE_T_rank_);
-    outfile->Printf("    Houston is (still) a delinquent\n");
     outfile->Printf("\n\n  @Total DLPNO-CCSDT Energy: %16.12f \n", variables_["SCF TOTAL ENERGY"] + e_total);
+    outfile->Printf("    Lord Jesus, this song is forever Yours...\n\n");
 }
 
 class DLPNOCCSDT_Q : public DLPNOCCSDT {
@@ -2283,6 +2295,7 @@ class DLPNOCCSDT_Q : public DLPNOCCSDT {
     std::unordered_map<int, int> i_j_k_l_to_ijkl_; ///< LMO indices (i, j, k, l) to significant LMO quadruplet index (ijkl), -1 if not found
     std::vector<std::tuple<int, int, int, int>> ijkl_to_i_j_k_l_; ///< LMO quadruplet index (ijkl) to LMO index tuple (i, j, k, l)
     std::vector<std::tuple<int, int, int, int>> ijkl_to_i_j_k_l_full_; ///< LMO quadruplet indices with no i <= j <= k <= l restriction
+    std::vector<int> sorted_quadruplets_; ///< quadruplets sorted by number of QNOs
 
     /// quadruples natural orbitals (QNOs)
     std::vector<Tensor<double, 4>> T_iajbkcld_; ///< Quadruples amplitude for each lmo triplet
@@ -2818,7 +2831,10 @@ void DLPNOCCSDT_Q::qno_transform(double t_cut_qno) {
         qno_count_max = std::max(qno_count_max, n_qno_[ijkl]);
     }
 
-    size_t n_total_possible = (naocc + 3) * (naocc + 2) * (naocc + 1) * (naocc) / 24 - (naocc + 1) * naocc / 2 + naocc;
+    // From ChatGPT: N choose 4 (all distinct) + N choose 2 (two values appear twice) 
+    // + 3 * N choose 3 (one value appears twice, each other value appears once)
+    size_t n_total_possible = (naocc) * (naocc - 1) * (naocc - 2) * (naocc - 3) / 24 + (naocc) * (naocc - 1) / 2 
+        + 3 * (naocc) * (naocc - 1) * (naocc - 2) / 6;
 
     outfile->Printf("  \n");
     outfile->Printf("    Number of (Unique) Local MO quadruplets: %d\n", n_lmo_quadruplets);
@@ -2829,6 +2845,24 @@ void DLPNOCCSDT_Q::qno_transform(double t_cut_qno) {
     outfile->Printf("      Min: %3d NOs \n", qno_count_min);
     outfile->Printf("      Max: %3d NOs \n", qno_count_max);
     outfile->Printf("  \n");
+
+    // Sort list of quadruplets based on number of QNOs (for parallel efficiency)
+    std::vector<std::pair<int, int>> ijkl_qnos(n_lmo_quadruplets);
+
+#pragma omp parallel for
+    for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
+        ijkl_qnos[ijkl] = std::make_pair(ijkl, n_qno_[ijkl]);
+    }
+    
+    std::sort(ijkl_qnos.begin(), ijkl_qnos.end(), [&](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+        return (a.second > b.second);
+    });
+
+    sorted_quadruplets_.resize(n_lmo_quadruplets);
+#pragma omp parallel for
+    for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
+        sorted_quadruplets_[ijkl] = ijkl_qnos[ijkl].first;
+    }
 
     timer_off("QNO transform");
 }
@@ -2844,7 +2878,8 @@ void DLPNOCCSDT_Q::estimate_memory() {
     size_t qno_total_memory = 0;
 
 #pragma omp parallel for reduction(+ : K_iabe_memory, K_iajm_memory, K_iajb_memory, qno_total_memory)
-    for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
+    for (int ijkl_sorted = 0; ijkl_sorted < n_lmo_quadruplets; ++ijkl_sorted) {
+        int ijkl = sorted_quadruplets_[ijkl_sorted];
         int nlmo_ijkl = lmoquadruplet_to_lmos_[ijkl].size();
 
         K_iabe_memory += 4 * n_qno_[ijkl] * n_qno_[ijkl] * n_qno_[ijkl];
@@ -2908,8 +2943,9 @@ double DLPNOCCSDT_Q::compute_gamma_ijkl(bool store_amplitudes) {
 
     double E_Q0 = 0.0;
 
-#pragma omp parallel for schedule(dynamic) reduction(+ : E_Q0)
-    for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
+#pragma omp parallel for schedule(dynamic, 1) reduction(+ : E_Q0)
+    for (int ijkl_sorted = 0; ijkl_sorted < n_lmo_quadruplets; ++ijkl_sorted) {
+        int ijkl = sorted_quadruplets_[ijkl_sorted];
         auto &[i, j, k, l] = ijkl_to_i_j_k_l_[ijkl];
         int ij = i_j_to_ij_[i][j], ik = i_j_to_ij_[i][k], il = i_j_to_ij_[i][l], 
             jk = i_j_to_ij_[j][k], jl = i_j_to_ij_[j][l], kl = i_j_to_ij_[k][l];
@@ -3047,16 +3083,12 @@ double DLPNOCCSDT_Q::compute_gamma_ijkl(bool store_amplitudes) {
 
         const int FOUR = ijkl_list.size();
 
-        // outfile->Printf("With a thousand hallelujahs\n");
-
         // Term 1 intermediates
         for (int idx = 0; idx < ijkl_list.size(); ++idx) {
             int i = ijkl_list[idx];
             K_iabe_list_[ijkl][idx] = Tensor<double, 3>("(ia|be)", nqno_ijkl, nqno_ijkl, nqno_ijkl);
             einsum(0.0, Indices{index::a, index::b, index::e}, &K_iabe_list_[ijkl][idx], 1.0, Indices{index::Q, index::a}, q_iv_list[idx], Indices{index::Q, index::b, index::e}, q_vv_ein);
         }
-
-        // outfile->Printf("We magnify Your name\n");
 
         // Term 2 intermediates
         std::array<Tensor<double, 4>, 16> T_mkl_list;
@@ -3089,8 +3121,6 @@ double DLPNOCCSDT_Q::compute_gamma_ijkl(bool store_amplitudes) {
             } // end j_idx
         } // end i_idx
 
-        // outfile->Printf("You alone deserve the glory\n");
-
         // Term 3 intermediates
         std::array<Tensor<double, 2>, 16> K_minj_list;
         for (int i_idx = 0; i_idx < ijkl_list.size(); ++i_idx) {
@@ -3120,8 +3150,6 @@ double DLPNOCCSDT_Q::compute_gamma_ijkl(bool store_amplitudes) {
             } // end m_ijkl
         } // end idx
 
-        // outfile->Printf("The honor and the praise\n");
-
         // Term 4 intermediates
         std::array<Tensor<double, 3>, 4> K_iame_list;
         for (int idx = 0; idx < ijkl_list.size(); ++idx) {
@@ -3147,8 +3175,6 @@ double DLPNOCCSDT_Q::compute_gamma_ijkl(bool store_amplitudes) {
             } // end j_idx
         } // end i_idx
 
-        // outfile->Printf("Lord Jesus, this song is forever Yours\n");
-
         // Term 5 intermediates
         std::array<Tensor<double, 3>, 4> K_mibe_list;
         for (int idx = 0; idx < ijkl_list.size(); ++idx) {
@@ -3156,8 +3182,6 @@ double DLPNOCCSDT_Q::compute_gamma_ijkl(bool store_amplitudes) {
             K_mibe_list[idx] = Tensor<double, 3>("(mi|be)", nlmo_ijkl, nqno_ijkl, nqno_ijkl);
             einsum(0.0, Indices{index::m, index::b, index::e}, &K_mibe_list[idx], 1.0, Indices{index::Q, index::m}, q_io_list[idx], Indices{index::Q, index::b, index::e}, q_vv_ein);
         }
-
-        // outfile->Printf("A thousand hallelujahs and a thousand more\n");
 
         // Term 6 intermediates
         std::array<Tensor<double, 3>, 16> theta_Qab;
@@ -3305,7 +3329,7 @@ double DLPNOCCSDT_Q::compute_gamma_ijkl(bool store_amplitudes) {
             int time_elapsed = (int) time_curr - (int) time_lap;
             if (time_elapsed > 60) {
                 outfile->Printf("  Time Elapsed from last checkpoint %4d (s), Progress %2d %%, Amplitudes for (%6d / %6d) Quadruplets Computed\n", time_elapsed, 
-                                    (100 * ijkl) / n_lmo_quadruplets, ijkl, n_lmo_quadruplets);
+                                    (100 * ijkl_sorted) / n_lmo_quadruplets, ijkl, n_lmo_quadruplets);
                 time_lap = std::time(nullptr);
             }
         } // end thread
@@ -3340,8 +3364,6 @@ double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>
     double quadruplet_energy = 0.0;
     std::unordered_map<int, double> e_perm_energy;
 
-    // outfile->Printf("My lighthouse, my lighthouse \n\n");
-
     std::array<Tensor<double, 4>, 16> T_ijm_list;
     for (int i_idx = 0; i_idx < ijkl_list.size(); ++i_idx) {
         int i = ijkl_list[i_idx];
@@ -3366,8 +3388,6 @@ double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>
             } // end m_ijkl
         } // end j_idx
     } // end i_idx
-
-    // outfile->Printf("Shining through the darkness \n\n");
         
     einsums::for_sequence<24UL>([&](auto perm_idx) {
         auto &[i_idx, j_idx, k_idx, l_idx] = quad_perms_long[perm_idx];
@@ -3380,8 +3400,6 @@ double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>
 
             // Get quadruples amplitude
             Tensor<double, 4> T_ijkl = quadruples_permuter(T4, i, j, k, l);
-
-            // outfile->Printf("I will follow you \n\n");
 
             // [Q] intermediates
             // u_{kl}^{ab}K_{ij}_{cd} - 2u_{kl}^{bd}L_{ij}^{ac} + u_{kl}^{cd}L_{ij}^{ab}
@@ -3401,8 +3419,6 @@ double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>
                     } // end c_ijkl
                 } // end b_ijkl
             } // end a_ijkl
-
-            // outfile->Printf("My lighthouse, my lighthouse \n\n");
 
             // Make a buffer
             Tensor<double, 4> T_buffer("T_buffer", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
@@ -3427,8 +3443,6 @@ double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>
             T_tilde -= T_buffer;
             sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::c, index::d, index::a}, T_ijkl);
             T_tilde -= T_buffer;
-
-            // outfile->Printf("I will trust the promise \n\n");
 
             // => alpha and beta contributions <= //
 
@@ -3458,8 +3472,6 @@ double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>
 
             e_perm_energy[ijkl_idx] += 2.0 * (linear_algebra::dot(alpha_ijm_buffer, K_lk_T) + linear_algebra::dot(beta_ijm_buffer, K_kl_T));
 
-            // outfile->Printf("You will carry me safe to shore \n\n");
-
             // 2 - P_{kl} contributions
             int k_ijkl = std::find(lmoquadruplet_to_lmos_[ijkl].begin(), lmoquadruplet_to_lmos_[ijkl].end(), k) - lmoquadruplet_to_lmos_[ijkl].begin();
             Tensor<double, 3> T_ijk = T_ijm_list[i_idx * FOUR + j_idx](k_ijkl, All, All, All);
@@ -3488,8 +3500,6 @@ double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>
             e_perm_energy[ijkl_idx] += -4.0 * linear_algebra::dot(T_ijl_tilde, g_kdce_T) + 2.0 * linear_algebra::dot(T_ijk_tilde, g_ldce_T);
 
             quadruplet_energy += e_perm_energy[ijkl_idx];
-
-            // outfile->Printf("Safe to shore! \n\n");
         }
     });
         
@@ -3522,8 +3532,9 @@ double DLPNOCCSDT_Q::lccsdt_q_iterations() {
 
         std::time_t time_start = std::time(nullptr);
 
-#pragma omp parallel for schedule(dynamic)
-        for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
+#pragma omp parallel for schedule(dynamic, 1)
+        for (int ijkl_sorted = 0; ijkl_sorted < n_lmo_quadruplets; ++ijkl_sorted) {
+            int ijkl = sorted_quadruplets_[ijkl_sorted];
             auto &[i, j, k, l] = ijkl_to_i_j_k_l_[ijkl];
 
             int nqno_ijkl = n_qno_[ijkl];
@@ -3642,7 +3653,8 @@ double DLPNOCCSDT_Q::lccsdt_q_iterations() {
         timer_on("Compute (Q) Energy");
         e_curr = 0.0;
 #pragma omp parallel for schedule(dynamic, 1) reduction(+ : e_curr)
-        for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
+        for (int ijkl_sorted = 0; ijkl_sorted < n_lmo_quadruplets; ++ijkl_sorted) {
+            int ijkl = sorted_quadruplets_[ijkl_sorted];
             double e_ijkl = compute_quadruplet_energy(ijkl, T_iajbkcld_[ijkl]);
             e_ijkl_[ijkl] = e_ijkl;
             e_curr += e_ijkl;
@@ -3679,7 +3691,8 @@ double DLPNOCCSDT_Q::compute_energy() {
     // Re-create T_iajbkc_clone intermediate
     int n_lmo_triplets = ijk_to_i_j_k_.size();
 #pragma omp parallel for schedule(dynamic, 1)
-    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
+    for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
+        int ijk = sorted_triplets_[ijk_sorted];
         auto &[i, j, k] = ijk_to_i_j_k_[ijk];
 
         T_iajbkc_clone_[ijk] = Tensor<double, 3>("T_ijk", n_tno_[ijk], n_tno_[ijk], n_tno_[ijk]);
@@ -3757,6 +3770,7 @@ double DLPNOCCSDT_Q::compute_energy() {
 
         outfile->Printf("\n\n  @Total DLPNO-CCSDT(Q) Energy: %16.12f\n", e_ccsdt_q_total);
     }
+    outfile->Printf("    A thousand hallelujahs and a thousand more!!!\n\n");
 
     timer_off("DLPNO-CCSDT(Q)");
 
@@ -3821,4 +3835,3 @@ SharedWavefunction dlpno_ccsdt_q(SharedWavefunction ref_wfn, Options& options) {
 }
 
 }}} // End namespaces
-
