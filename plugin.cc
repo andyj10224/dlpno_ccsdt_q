@@ -135,6 +135,14 @@ class DLPNOCCSDT : public DLPNOCCSD_T {
     std::vector<Tensor<double, 3>> q_ov_;
     std::vector<Tensor<double, 3>> q_vv_;
 
+    // std::vector<DiskTensor<double, 3>> q_ov_disk_;
+    // std::vector<DiskTensor<double, 3>> q_vv_disk_;
+
+    // Write expensive overlap integrals S(a_{ijk}, a_{lm}) and S(a_{ijk}, a_{mli}) to disk?
+    bool disk_overlap_;
+    // Write expensive integrals (q_{ijk}| m_{ijk} a_{ijk}) and (q_{ijk} | a_{ijk} b_{ijk}) to disk?
+    bool disk_ints_;
+
     // Singles Amplitudes
     std::vector<Tensor<double, 2>> T_n_ijk_;
     // Einsums clone of Psi4 T3 amplitudes
@@ -298,16 +306,6 @@ void DLPNOCCSDT::estimate_memory() {
             S_tno_osv_large += ntno_ijk * n_pno_[ll];
             S_tno_pno_med += ntno_ijk * (n_pno_[il] + n_pno_[jl] + n_pno_[kl]);
 
-            for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
-                if (l_ijk > m_ijk) continue;
-                int lm_idx = l_ijk * nlmo_ijk + m_ijk;
-                int m = lmotriplet_to_lmos_[ijk][m_ijk];
-                int lm = i_j_to_ij_[l][m];
-                if (lm != -1) {
-                    S_tno_pno_large += ntno_ijk * n_pno_[lm];
-                }
-            }
-
             int ljk_dense = l * naocc * naocc + j * naocc + k;
             if (i_j_k_to_ijk_.count(ljk_dense)) {
                 int ljk = i_j_k_to_ijk_[ljk_dense];
@@ -325,6 +323,18 @@ void DLPNOCCSDT::estimate_memory() {
                 int ijl = i_j_k_to_ijk_[ijl_dense];
                 S_tno_tno_small += ntno_ijk * n_tno_[ijl];
             } // end if
+
+            if (disk_overlap_) continue;
+
+            for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
+                if (l_ijk > m_ijk) continue;
+                int lm_idx = l_ijk * nlmo_ijk + m_ijk;
+                int m = lmotriplet_to_lmos_[ijk][m_ijk];
+                int lm = i_j_to_ij_[l][m];
+                if (lm != -1) {
+                    S_tno_pno_large += ntno_ijk * n_pno_[lm];
+                }
+            }
 
             for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
                 if (l_ijk > m_ijk) continue;
@@ -368,6 +378,12 @@ void DLPNOCCSDT::estimate_memory() {
     outfile->Printf("    S(a_{ijk}, a_{ljk})            : %.3f [GiB]\n", S_tno_tno_small * pow(2.0, -30) * sizeof(double));
     outfile->Printf("    S(a_{ijk}, a_{mli})            : %.3f [GiB]\n", S_tno_tno_large * pow(2.0, -30) * sizeof(double));
     outfile->Printf("    Total Memory Required          : %.3f [GiB]\n\n", total_memory * pow(2.0, -30) * sizeof(double));
+
+    if (!disk_overlap_) {
+        outfile->Printf("    Keeping all PNO/TNO overlap matrices in core!\n\n");
+    } else {
+        outfile->Printf("    Writing expensive S(a_{ijk}, a_{lm}) and S(a_{ijk}, a_{mli}) matrices to disk!\n\n");
+    }
 }
 
 void DLPNOCCSDT::compute_integrals() {
@@ -646,7 +662,7 @@ void DLPNOCCSDT::compute_tno_overlaps() {
         S_ijk_il_[ijk].resize(nlmo_ijk);
         S_ijk_jl_[ijk].resize(nlmo_ijk);
         S_ijk_kl_[ijk].resize(nlmo_ijk);
-        S_ijk_lm_[ijk].resize(nlmo_ijk * nlmo_ijk);
+        S_ijk_lm_[ijk].resize(nlmo_ijk * nlmo_ijk, std::make_shared<Matrix>(0, 0));
 
         for (int l_ijk = 0; l_ijk < nlmo_ijk; ++l_ijk) {
             int l = lmotriplet_to_lmos_[ijk][l_ijk];
@@ -673,14 +689,25 @@ void DLPNOCCSDT::compute_tno_overlaps() {
             }
         }
 
+        if (disk_overlap_) {
+            SharedVector S_ijk_lm_block = flatten_mats(S_ijk_lm_[ijk]);
+            std::stringstream s_name;
+            s_name << "S_ijk_lm " << (ijk);
+            S_ijk_lm_block->set_name(s_name.str());
+
+            S_ijk_lm_[ijk].clear();
+#pragma omp critical
+            S_ijk_lm_block->save(psio_.get(), PSIF_DLPNO_TRIPLES);
+        }
+
         // TNO/TNO overlaps
         S_ijk_ljk_[ijk].resize(nlmo_ijk);
         S_ijk_ilk_[ijk].resize(nlmo_ijk);
         S_ijk_ijl_[ijk].resize(nlmo_ijk);
 
-        S_ijk_mli_[ijk].resize(nlmo_ijk * nlmo_ijk);
-        S_ijk_mlj_[ijk].resize(nlmo_ijk * nlmo_ijk);
-        S_ijk_mlk_[ijk].resize(nlmo_ijk * nlmo_ijk);
+        S_ijk_mli_[ijk].resize(nlmo_ijk * nlmo_ijk, std::make_shared<Matrix>(0, 0));
+        S_ijk_mlj_[ijk].resize(nlmo_ijk * nlmo_ijk, std::make_shared<Matrix>(0, 0));
+        S_ijk_mlk_[ijk].resize(nlmo_ijk * nlmo_ijk, std::make_shared<Matrix>(0, 0));
 
         for (int l_ijk = 0; l_ijk < nlmo_ijk; ++l_ijk) {
             int l = lmotriplet_to_lmos_[ijk][l_ijk];
@@ -732,6 +759,35 @@ void DLPNOCCSDT::compute_tno_overlaps() {
                 } // end if
             } // end m_ijk
         } // end l_ijk
+
+        if (disk_overlap_) {
+            SharedVector S_ijk_mli_block = flatten_mats(S_ijk_mli_[ijk]);
+            std::stringstream mli_name;
+            mli_name << "S_ijk_mli " << (ijk);
+            S_ijk_mli_block->set_name(mli_name.str());
+
+            S_ijk_mli_[ijk].clear();
+#pragma omp critical
+            S_ijk_mli_block->save(psio_.get(), PSIF_DLPNO_TRIPLES);
+
+            SharedVector S_ijk_mlj_block = flatten_mats(S_ijk_mlj_[ijk]);
+            std::stringstream mlj_name;
+            mlj_name << "S_ijk_mlj " << (ijk);
+            S_ijk_mlj_block->set_name(mlj_name.str());
+
+            S_ijk_mlj_[ijk].clear();
+#pragma omp critical
+            S_ijk_mlj_block->save(psio_.get(), PSIF_DLPNO_TRIPLES);
+
+            SharedVector S_ijk_mlk_block = flatten_mats(S_ijk_mlk_[ijk]);
+            std::stringstream mlk_name;
+            mlk_name << "S_ijk_mlk " << (ijk);
+            S_ijk_mlk_block->set_name(mlk_name.str());
+
+            S_ijk_mlk_[ijk].clear();
+#pragma omp critical
+            S_ijk_mlk_block->save(psio_.get(), PSIF_DLPNO_TRIPLES);
+        } // end if
     }
 }
 
@@ -1055,7 +1111,7 @@ void DLPNOCCSDT::compute_R_iajbkc_cc3(std::vector<SharedMatrix>& R_iajbkc) {
                     t_name << "T " << (ijl);
                     T_ijl = std::make_shared<Matrix>(t_name.str(), n_tno_[ijl], n_tno_[ijl] * n_tno_[ijl]);
 #pragma omp critical
-                    T_ijl->load(psio_, PSIF_DLPNO_TRIPLES, psi::Matrix::Full);
+                    T_ijl->load(psio_.get(), PSIF_DLPNO_TRIPLES, psi::Matrix::Full);
                 } else {
                     T_ijl = T_iajbkc_[ijl];
                 }
@@ -1079,7 +1135,7 @@ void DLPNOCCSDT::compute_R_iajbkc_cc3(std::vector<SharedMatrix>& R_iajbkc) {
                     t_name << "T " << (ilk);
                     T_ilk = std::make_shared<Matrix>(t_name.str(), n_tno_[ilk], n_tno_[ilk] * n_tno_[ilk]);
 #pragma omp critical
-                    T_ilk->load(psio_, PSIF_DLPNO_TRIPLES, psi::Matrix::Full);
+                    T_ilk->load(psio_.get(), PSIF_DLPNO_TRIPLES, psi::Matrix::Full);
                 } else {
                     T_ilk = T_iajbkc_[ilk];
                 }
@@ -1103,7 +1159,7 @@ void DLPNOCCSDT::compute_R_iajbkc_cc3(std::vector<SharedMatrix>& R_iajbkc) {
                     t_name << "T " << (ljk);
                     T_ljk = std::make_shared<Matrix>(t_name.str(), n_tno_[ljk], n_tno_[ljk] * n_tno_[ljk]);
 #pragma omp critical
-                    T_ljk->load(psio_, PSIF_DLPNO_TRIPLES, psi::Matrix::Full);
+                    T_ljk->load(psio_.get(), PSIF_DLPNO_TRIPLES, psi::Matrix::Full);
                 } else {
                     T_ljk = T_iajbkc_[ljk];
                 }
@@ -1369,6 +1425,34 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
 
         // ==> Stopping point 10/22 10:02 AM <== //
 
+        // Load in overlap integrals from disk
+        if (disk_overlap_) {
+            S_ijk_lm_[ijk].resize(nlmo_ijk * nlmo_ijk, std::make_shared<Matrix>(0, 0));
+
+            int size_ijk_lm = 0;
+            for (int l_ijk = 0; l_ijk < nlmo_ijk; ++l_ijk) {
+                int l = lmotriplet_to_lmos_[ijk][l_ijk];
+                for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
+                    int m = lmotriplet_to_lmos_[ijk][m_ijk];
+                    if (l_ijk > m_ijk) continue;
+                    int lm_idx = l_ijk * nlmo_ijk + m_ijk;
+                    int lm = i_j_to_ij_[l][m];
+                    if (lm == -1) continue;
+
+                    S_ijk_lm_[ijk][lm_idx] = std::make_shared<Matrix>(ntno_ijk, n_pno_[lm]);
+                    size_ijk_lm += ntno_ijk * n_pno_[lm];
+                } // end m_ijk
+            } // end l_ijk
+
+            std::stringstream s_name;
+            s_name << "S_ijk_lm " << (ijk);
+            SharedVector S_ijk_lm_block = std::make_shared<Vector>(s_name.str(), size_ijk_lm);
+#pragma omp critical
+            S_ijk_lm_block->load(psio_.get(), PSIF_DLPNO_TRIPLES);
+
+            copy_flat_mats(S_ijk_lm_block, S_ijk_lm_[ijk]);
+        } // end if
+
         // rho_dbci, dbcj, dbck (Lesiuk Eq. 16)
         std::vector<Tensor<double, 3>> rho_dbck_list(ijk_idx.size());
 
@@ -1389,6 +1473,9 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             }
         }
 
+        // Erase overlap matrices from RAM
+        if (disk_overlap_) S_ijk_lm_[ijk].clear();
+
         // K_dble integrals
         Tensor<double, 4> K_dble("K_dble", ntno_ijk, ntno_ijk, nlmo_ijk, ntno_ijk);
         einsum(0.0, Indices{index::d, index::b, index::l, index::e}, &K_dble, 1.0, Indices{index::Q, index::d, index::b}, q_vv_t1, Indices{index::Q, index::l, index::e}, q_ov_[ijk]);
@@ -1404,6 +1491,69 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         sort(Indices{index::l, index::m, index::d, index::e}, &K_ldme_T, Indices{index::l, index::d, index::m, index::e}, K_ldme);
         Tensor<double, 4> K_ldme_T2("K_ldme_T2", nlmo_ijk, ntno_ijk, nlmo_ijk, ntno_ijk);
         sort(Indices{index::l, index::e, index::m, index::d}, &K_ldme_T2, Indices{index::l, index::d, index::m, index::e}, K_ldme);
+
+        // Load in overlap integrals from disk
+        if (disk_overlap_) {
+            S_ijk_mli_[ijk].resize(nlmo_ijk * nlmo_ijk, std::make_shared<Matrix>(0, 0));
+            S_ijk_mlj_[ijk].resize(nlmo_ijk * nlmo_ijk, std::make_shared<Matrix>(0, 0));
+            S_ijk_mlk_[ijk].resize(nlmo_ijk * nlmo_ijk, std::make_shared<Matrix>(0, 0));
+
+            int size_ijk_mli = 0, size_ijk_mlj = 0, size_ijk_mlk = 0;
+            for (int l_ijk = 0; l_ijk < nlmo_ijk; ++l_ijk) {
+                int l = lmotriplet_to_lmos_[ijk][l_ijk];
+
+                for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
+                    if (l_ijk > m_ijk) continue;
+                    int m = lmotriplet_to_lmos_[ijk][m_ijk];
+                    int lm_idx = l_ijk * nlmo_ijk + m_ijk;
+
+                    int mli_dense = m * naocc * naocc + l * naocc + i;
+                    if (i_j_k_to_ijk_.count(mli_dense)) {
+                        int mli = i_j_k_to_ijk_[mli_dense];
+                        S_ijk_mli_[ijk][lm_idx] = std::make_shared<Matrix>(n_tno_[ijk], n_tno_[mli]);
+                        size_ijk_mli += S_ijk_mli_[ijk][lm_idx]->size();
+                    } // end if
+
+                    int mlj_dense = m * naocc * naocc + l * naocc + j;
+                    if (i_j_k_to_ijk_.count(mlj_dense)) {
+                        int mlj = i_j_k_to_ijk_[mlj_dense];
+                        S_ijk_mlj_[ijk][lm_idx] = std::make_shared<Matrix>(n_tno_[ijk], n_tno_[mlj]);
+                        size_ijk_mlj += S_ijk_mlj_[ijk][lm_idx]->size();
+                    } // end if
+
+                    int mlk_dense = m * naocc * naocc + l * naocc + k;
+                    if (i_j_k_to_ijk_.count(mlk_dense)) {
+                        int mlk = i_j_k_to_ijk_[mlk_dense];
+                        S_ijk_mlk_[ijk][lm_idx] = std::make_shared<Matrix>(n_tno_[ijk], n_tno_[mlk]);
+                        size_ijk_mlk += S_ijk_mlk_[ijk][lm_idx]->size();
+                    } // end if
+                } // end m_ijk
+            } // end l_ijk
+
+            std::stringstream mli_name;
+            mli_name << "S_ijk_mli " << (ijk);
+            SharedVector S_ijk_mli_block = std::make_shared<Vector>(mli_name.str(), size_ijk_mli);
+#pragma omp critical
+            S_ijk_mli_block->load(psio_.get(), PSIF_DLPNO_TRIPLES);
+
+            copy_flat_mats(S_ijk_mli_block, S_ijk_mli_[ijk]);
+
+            std::stringstream mlj_name;
+            mlj_name << "S_ijk_mlj " << (ijk);
+            SharedVector S_ijk_mlj_block = std::make_shared<Vector>(mlj_name.str(), size_ijk_mlj);
+#pragma omp critical
+            S_ijk_mlj_block->load(psio_.get(), PSIF_DLPNO_TRIPLES);
+
+            copy_flat_mats(S_ijk_mlj_block, S_ijk_mlj_[ijk]);
+
+            std::stringstream mlk_name;
+            mlk_name << "S_ijk_mlk " << (ijk);
+            SharedVector S_ijk_mlk_block = std::make_shared<Vector>(mlk_name.str(), size_ijk_mlk);
+#pragma omp critical
+            S_ijk_mlk_block->load(psio_.get(), PSIF_DLPNO_TRIPLES);
+
+            copy_flat_mats(S_ijk_mlk_block, S_ijk_mlk_[ijk]);
+        } // end if
 
         std::vector<std::vector<SharedMatrix>> S_ijk_li_list = {S_ijk_il_[ijk], S_ijk_jl_[ijk], S_ijk_kl_[ijk]};
         std::vector<std::vector<SharedMatrix>> S_ijk_mli_list = {S_ijk_mli_[ijk], S_ijk_mlj_[ijk], S_ijk_mlk_[ijk]};
@@ -1865,6 +2015,12 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             } // end l_ijk
         } // end idx
 
+        if (disk_overlap_) {
+            S_ijk_mli_[ijk].clear();
+            S_ijk_mlj_[ijk].clear();
+            S_ijk_mlk_[ijk].clear();
+        }
+
         // Flush Vperms
         for (int a_ijk = 0; a_ijk < ntno_ijk; a_ijk++) {
             for (int b_ijk = 0; b_ijk < ntno_ijk; b_ijk++) {
@@ -2190,6 +2346,9 @@ double DLPNOCCSDT::compute_energy() {
     if not psi4.core.has_option_changed("DLPNO", "T_CUT_TNO"): psi4.core.set_local_option("DLPNO", "T_CUT_TNO", 1.0e-10)
     */
 
+    disk_overlap_ = options_.get_bool("DLPNO_CCSDT_DISK_OVERLAP");
+    disk_ints_ = options_.get_bool("DLPNO_CCSDT_DISK_INTS");
+
     // Run DLPNO-CCSD(T) as initial step
     double E_DLPNO_CCSD_T = DLPNOCCSD_T::compute_energy();
 
@@ -2197,27 +2356,21 @@ double DLPNOCCSDT::compute_energy() {
 
     print_header();
 
-    // => Loose DLPNO-CCSDT Algorithm!!! <= //
-    outfile->Printf("\n    Running initial DLPNO-CCSDT computation (at looser TNO tolerance) \n");
-    outfile->Printf("\n      * This is used to form better triples natural orbitals (TNOs) later on! \n\n");
-
     // Compute TNOs
-    timer_on("Loose DLPNO-CCSDT : Computing TNOs");
+    timer_on("DLPNO-CCSDT : Recomputing TNOs");
 
     int n_lmo_triplets = ijk_to_i_j_k_.size();
     tno_scale_.clear();
     tno_scale_.resize(n_lmo_triplets, 1.0);
 
-    double t_cut_tno_loose = options_.get_double("T_CUT_TNO_LOOSE");
+    double t_cut_tno_full = options_.get_double("T_CUT_TNO_FULL");
     double t_cut_trace_triples = options_.get_double("T_CUT_TRACE_TRIPLES");
+    double t_cut_energy_triples = options_.get_double("T_CUT_ENERGY_TRIPLES");
 
-    outfile->Printf("\n\n");
-    outfile->Printf("    T_CUT_TNO set to %6.3e for initial triples  \n", t_cut_tno_loose);
-    outfile->Printf("    T_CUT_TRACE_TRIPLES (re)set to %.8f         \n", t_cut_trace_triples);
+    tno_transform(t_cut_tno_full, t_cut_trace_triples, t_cut_energy_triples);
 
-    tno_transform(t_cut_tno_loose, t_cut_trace_triples);
-    compute_lccsd_t0(true);
-    lccsd_t_iterations();
+    double E_T0_new = compute_lccsd_t0(true);
+    double E_T_new = lccsd_t_iterations();
 
     // Sort list of triplets based on number of TNOs (for parallel efficiency)
     std::vector<std::pair<int, int>> ijk_tnos(n_lmo_triplets);
@@ -2237,70 +2390,12 @@ double DLPNOCCSDT::compute_energy() {
         sorted_triplets_[ijk] = ijk_tnos[ijk].first;
     }
     
-    timer_off("Loose DLPNO-CCSDT : Computing TNOs");
+    timer_off("DLPNO-CCSDT : Recomputing TNOs");
 
     nthread_ = 1;
 #ifdef _OPENMP
     nthread_ = Process::environment.get_n_threads();
 #endif
-
-    // Run loose DLPNO-CCSDT
-    timer_on("Loose DLPNO-CCSDT : Estimate Memory");
-    estimate_memory();
-    timer_off("Loose DLPNO-CCSDT : Estimate Memory");
-
-    timer_on("Loose DLPNO-CCSDT : Compute Integrals");
-    compute_integrals();
-    timer_off("Loose DLPNO-CCSDT : Compute Integrals");
-
-    timer_on("Loose DLPNO-CCSDT : Compute TNO overlaps");
-    compute_tno_overlaps();
-    timer_off("Loose DLPNO-CCSDT : Compute TNO overlaps");
-
-    timer_on("Loose DLPNO-CCSDT : LCCSDT Iterations");
-    lccsdt_iterations();
-    timer_off("Loose DLPNO-CCSDT : LCCSDT Iterations");
-
-    double e_corr_init = e_lccsdt_ + de_weak_;
-
-    // Run DLPNO-CCSDT (tighter TNO tolerance)
-
-    outfile->Printf("\n    Running final DLPNO-CCSDT computation at tighter TNO tolerance... \n\n");
-
-    timer_on("DLPNO-CCSDT : Recomputing TNOs");
-
-    tno_scale_.clear();
-    tno_scale_.resize(n_lmo_triplets, 1.0);
-
-    double t_cut_tno_full = options_.get_double("T_CUT_TNO_FULL");
-    t_cut_trace_triples = options_.get_double("T_CUT_TRACE_TRIPLES");
-    double t_cut_energy_triples = options_.get_double("T_CUT_ENERGY_TRIPLES");
-
-    outfile->Printf("\n\n");
-    outfile->Printf("    T_CUT_TNO set to %6.3e for full triples     \n", t_cut_tno_full);
-    outfile->Printf("    T_CUT_TRACE_TRIPLES (re)set to %.8f         \n", t_cut_trace_triples);
-
-    tno_transform(t_cut_tno_full, t_cut_trace_triples, t_cut_energy_triples);
-    double E_T0_new = compute_lccsd_t0(true);
-    double E_T_new = lccsd_t_iterations();
-
-    // Sort list of triplets based on number of TNOs (for parallel efficiency)
-#pragma omp parallel for
-    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
-        ijk_tnos[ijk] = std::make_pair(ijk, n_tno_[ijk]);
-    }
-    
-    std::sort(ijk_tnos.begin(), ijk_tnos.end(), [&](const std::pair<int, int>& a, const std::pair<int, int>& b) {
-        return (a.second > b.second);
-    });
-
-    sorted_triplets_.resize(n_lmo_triplets);
-#pragma omp parallel for
-    for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
-        sorted_triplets_[ijk] = ijk_tnos[ijk].first;
-    }
-    
-    timer_off("DLPNO-CCSDT : Recomputing TNOs");
 
     timer_on("DLPNO-CCSDT : Estimate Memory");
     estimate_memory();
@@ -2321,7 +2416,7 @@ double DLPNOCCSDT::compute_energy() {
 
     timer_off("DLPNO-CCSDT");
 
-    dE_T_rank_ = (e_lccsd_t_ - e_lccsd_ - E_T_);
+    dE_T_rank_ = 0.0; // (e_lccsd_t_ - e_lccsd_ - E_T_);
     outfile->Printf("\n  * (T) TNO rank correction: %16.12f\n\n", dE_T_rank_);
 
     double e_scf = variables_["SCF TOTAL ENERGY"];
@@ -3979,6 +4074,8 @@ int read_options(std::string name, Options& options)
         // => Triples Options <= //
         options.add_double("T_CUT_TNO_LOOSE", 1.0e-6);
         options.add_double("T_CUT_TNO_FULL", 1.0e-7);
+        options.add_bool("DLPNO_CCSDT_DISK_OVERLAP", true);
+        options.add_bool("DLPNO_CCSDT_DISK_INTS", true);
         options.add_bool("DLPNO_CCSDT_DISK_DIIS", false);
 
         // => Quadruples Options <= //
