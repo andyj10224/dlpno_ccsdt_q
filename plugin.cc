@@ -143,15 +143,16 @@ class DLPNOCCSDT : public DLPNOCCSD_T {
     std::vector<Tensor<double, 3>> U_iajbkc_;
     // List of triples sorted by number of TNOs
     std::vector<int> sorted_triplets_;
-
-    // Run CC3 only?
-    bool cc3_;
     // Number of threads
     int nthread_;
     // Energy expression
     double e_lccsdt_;
-    // Energy incurred from TNO rank reduction from (T) to T
+    // Energy loss incurred from TNO rank reduction from (T) to T
     double dE_T_rank_;
+    // (T0) energy using looser TNOs
+    double E_T0_loose_;
+    // (T) energy using looser TNOs
+    double E_T_loose_;
 
     /// Helper function for transforming amplitudes from one TNO space to another
     Tensor<double, 3> matmul_3d_einsums(const Tensor<double, 3> &A, const SharedMatrix &X, int dim_old, int dim_new);
@@ -162,16 +163,16 @@ class DLPNOCCSDT : public DLPNOCCSD_T {
     void compute_R_ia_triples(std::vector<SharedMatrix>& R_ia, std::vector<std::vector<SharedMatrix>>& R_ia_buffer);
     /// compute doubles residuals in LCCSDT equations
     void compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::vector<SharedMatrix>& Rn_iajb, std::vector<std::vector<SharedMatrix>>& R_iajb_buffer);
-    /// computes triples residuals in LCC3 equations
+    /// computes triples residuals in LCC3 equations (obsolete, just for archive)
     void compute_R_iajbkc_cc3(std::vector<SharedMatrix>& R_iajbkc);
     /// computes triples residuals in LCCSDT equations
     void compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc);
 
     void print_header();
-    void estimate_memory(bool cc3=false);
+    void estimate_memory();
     void compute_integrals();
-    void compute_tno_overlaps(bool cc3=false);
-    void lccsdt_iterations(bool cc3=false);
+    void compute_tno_overlaps();
+    void lccsdt_iterations();
     void print_results();
 
    public:
@@ -246,12 +247,9 @@ void DLPNOCCSDT::print_header() {
     outfile->Printf("    F_CUT_T                    = %6.3e \n", options_.get_double("F_CUT_T"));
 }
 
-void DLPNOCCSDT::estimate_memory(bool cc3) {
-    if (cc3) {
-        outfile->Printf("\n ==>  DLPNO-CC3 Memory Estimate  <== \n\n");
-    } else {
-        outfile->Printf("\n ==> DLPNO-CCSDT Memory Estimate <== \n\n");
-    }
+void DLPNOCCSDT::estimate_memory() {
+
+    outfile->Printf("\n ==> DLPNO-CCSDT Memory Estimate <== \n\n");
 
     size_t naocc = i_j_to_ij_.size();
     size_t n_lmo_triplets = ijk_to_i_j_k_.size();
@@ -300,7 +298,15 @@ void DLPNOCCSDT::estimate_memory(bool cc3) {
             S_tno_osv_large += ntno_ijk * n_pno_[ll];
             S_tno_pno_med += ntno_ijk * (n_pno_[il] + n_pno_[jl] + n_pno_[kl]);
 
-            if (cc3) continue;
+            for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
+                if (l_ijk > m_ijk) continue;
+                int lm_idx = l_ijk * nlmo_ijk + m_ijk;
+                int m = lmotriplet_to_lmos_[ijk][m_ijk];
+                int lm = i_j_to_ij_[l][m];
+                if (lm != -1) {
+                    S_tno_pno_large += ntno_ijk * n_pno_[lm];
+                }
+            }
 
             int ljk_dense = l * naocc * naocc + j * naocc + k;
             if (i_j_k_to_ijk_.count(ljk_dense)) {
@@ -322,12 +328,7 @@ void DLPNOCCSDT::estimate_memory(bool cc3) {
 
             for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
                 if (l_ijk > m_ijk) continue;
-                int lm_idx = l_ijk * nlmo_ijk + m_ijk;
                 int m = lmotriplet_to_lmos_[ijk][m_ijk];
-                int lm = i_j_to_ij_[l][m];
-                if (lm != -1) {
-                    S_tno_pno_large += ntno_ijk * n_pno_[lm];
-                }
 
                 int mli_dense = m * naocc * naocc + l * naocc + i;
                 if (i_j_k_to_ijk_.count(mli_dense)) {
@@ -574,7 +575,7 @@ void DLPNOCCSDT::compute_integrals() {
     } // end ijk
 }
 
-void DLPNOCCSDT::compute_tno_overlaps(bool cc3) {
+void DLPNOCCSDT::compute_tno_overlaps() {
 
     size_t naocc = i_j_to_ij_.size();
     size_t n_lmo_triplets = ijk_to_i_j_k_.size();
@@ -593,17 +594,15 @@ void DLPNOCCSDT::compute_tno_overlaps(bool cc3) {
     S_ijk_jl_.resize(n_lmo_triplets);
     S_ijk_kl_.resize(n_lmo_triplets);
 
-    if (!cc3) {
-        S_ijk_lm_.resize(n_lmo_triplets);
+    S_ijk_lm_.resize(n_lmo_triplets);
 
-        S_ijk_ljk_.resize(n_lmo_triplets);
-        S_ijk_ilk_.resize(n_lmo_triplets);
-        S_ijk_ijl_.resize(n_lmo_triplets);
+    S_ijk_ljk_.resize(n_lmo_triplets);
+    S_ijk_ilk_.resize(n_lmo_triplets);
+    S_ijk_ijl_.resize(n_lmo_triplets);
 
-        S_ijk_mli_.resize(n_lmo_triplets);
-        S_ijk_mlj_.resize(n_lmo_triplets);
-        S_ijk_mlk_.resize(n_lmo_triplets);
-    }
+    S_ijk_mli_.resize(n_lmo_triplets);
+    S_ijk_mlj_.resize(n_lmo_triplets);
+    S_ijk_mlk_.resize(n_lmo_triplets);
 
 #pragma omp parallel for schedule(dynamic, 1)
     for (int ijk_sorted = 0; ijk_sorted < n_lmo_triplets; ++ijk_sorted) {
@@ -647,8 +646,7 @@ void DLPNOCCSDT::compute_tno_overlaps(bool cc3) {
         S_ijk_il_[ijk].resize(nlmo_ijk);
         S_ijk_jl_[ijk].resize(nlmo_ijk);
         S_ijk_kl_[ijk].resize(nlmo_ijk);
-
-        if (!cc3) S_ijk_lm_[ijk].resize(nlmo_ijk * nlmo_ijk);
+        S_ijk_lm_[ijk].resize(nlmo_ijk * nlmo_ijk);
 
         for (int l_ijk = 0; l_ijk < nlmo_ijk; ++l_ijk) {
             int l = lmotriplet_to_lmos_[ijk][l_ijk];
@@ -662,22 +660,18 @@ void DLPNOCCSDT::compute_tno_overlaps(bool cc3) {
 
             S_ijk_kl_[ijk][l_ijk] = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[kl]);
             S_ijk_kl_[ijk][l_ijk] = linalg::triplet(X_tno_[ijk], S_ijk_kl_[ijk][l_ijk], X_pno_[kl], true, false, false);
+            
+            for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
+                int m = lmotriplet_to_lmos_[ijk][m_ijk];
+                if (l_ijk > m_ijk) continue;
+                int lm_idx = l_ijk * nlmo_ijk + m_ijk;
+                int lm = i_j_to_ij_[l][m];
+                if (lm == -1) continue;
 
-            if (!cc3) {
-                for (int m_ijk = 0; m_ijk < nlmo_ijk; ++m_ijk) {
-                    int m = lmotriplet_to_lmos_[ijk][m_ijk];
-                    if (l_ijk > m_ijk) continue;
-                    int lm_idx = l_ijk * nlmo_ijk + m_ijk;
-                    int lm = i_j_to_ij_[l][m];
-                    if (lm == -1) continue;
-
-                    S_ijk_lm_[ijk][lm_idx] = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[lm]);
-                    S_ijk_lm_[ijk][lm_idx] = linalg::triplet(X_tno_[ijk], S_ijk_lm_[ijk][lm_idx], X_pno_[lm], true, false, false);
-                }
+                S_ijk_lm_[ijk][lm_idx] = submatrix_rows_and_cols(*S_pao_, lmotriplet_to_paos_[ijk], lmopair_to_paos_[lm]);
+                S_ijk_lm_[ijk][lm_idx] = linalg::triplet(X_tno_[ijk], S_ijk_lm_[ijk][lm_idx], X_pno_[lm], true, false, false);
             }
         }
-
-        if (cc3) continue;
 
         // TNO/TNO overlaps
         S_ijk_ljk_[ijk].resize(nlmo_ijk);
@@ -737,7 +731,6 @@ void DLPNOCCSDT::compute_tno_overlaps(bool cc3) {
                     S_ijk_mlk_[ijk][lm_idx] = linalg::triplet(X_tno_[ijk], S_ijk_mlk_[ijk][lm_idx], X_tno_[mlk], true, false, false);
                 } // end if
             } // end m_ijk
-
         } // end l_ijk
     }
 }
@@ -1885,7 +1878,7 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
     } // end ijk
 }
 
-void DLPNOCCSDT::lccsdt_iterations(bool cc3) {
+void DLPNOCCSDT::lccsdt_iterations() {
 
     int naocc = i_j_to_ij_.size();
     int n_lmo_pairs = ij_to_i_j_.size();
@@ -1942,11 +1935,9 @@ void DLPNOCCSDT::lccsdt_iterations(bool cc3) {
     U_iajbkc_.resize(n_lmo_triplets);
 
     // LCCSDT iterations
-    if (cc3) {
-        outfile->Printf("\n  ==>  Local CC3  <==\n\n");
-    } else {
-        outfile->Printf("\n  ==> Local CCSDT <==\n\n");
-    }
+    
+    outfile->Printf("\n  ==> Local CCSDT <==\n\n");
+    
     outfile->Printf("    E_CONVERGENCE = %.2e\n", options_.get_double("E_CONVERGENCE"));
     outfile->Printf("    R_CONVERGENCE = %.2e\n\n", options_.get_double("R_CONVERGENCE"));
     outfile->Printf("                       Corr. Energy    Delta E     Max R1     Max R2     Max R3     Time (s)\n");
@@ -1955,7 +1946,12 @@ void DLPNOCCSDT::lccsdt_iterations(bool cc3) {
     double e_curr = 0.0, e_prev = 0.0, e_weak = 0.0, r_curr1 = 0.0, r_curr2 = 0.0, r_curr3 = 0.0;
     bool e_converged = false, r_converged = false;
 
-    DIISManager diis(options_.get_int("DIIS_MAX_VECS"), "LCCSDT DIIS", DIISManager::RemovalPolicy::LargestError, DIISManager::StoragePolicy::InCore);
+    DIISManager diis;
+    if (options_.get_bool("DLPNO_CCSDT_DISK_DIIS")) {
+        diis = DIISManager(options_.get_int("DIIS_MAX_VECS"), "LCCSDT DIIS", DIISManager::RemovalPolicy::LargestError, DIISManager::StoragePolicy::OnDisk);
+    } else {
+        diis = DIISManager(options_.get_int("DIIS_MAX_VECS"), "LCCSDT DIIS", DIISManager::RemovalPolicy::LargestError, DIISManager::StoragePolicy::InCore);
+    }
 
     while (!(e_converged && r_converged)) {
         // RMS of residual per LMO orbital, for assessing convergence
@@ -2049,11 +2045,9 @@ void DLPNOCCSDT::lccsdt_iterations(bool cc3) {
 
         // compute triples amplitude
         timer_on("DLPNO-CCSDT : R_iajbkc");
-        if (cc3) {
-            compute_R_iajbkc_cc3(R_iajbkc);
-        } else {
-            compute_R_iajbkc(R_iajbkc);
-        }
+        
+        
+        compute_R_iajbkc(R_iajbkc);
         timer_off("DLPNO-CCSDT : R_iajbkc");
 
         // Update singles amplitude
@@ -2172,11 +2166,7 @@ void DLPNOCCSDT::lccsdt_iterations(bool cc3) {
 
         std::time_t time_stop = std::time(nullptr);
 
-        if (cc3) {
-            outfile->Printf("   @LCC3  iter %3d: %16.12f %10.3e %10.3e %10.3e %10.3e %8d\n", iteration, e_curr, e_curr - e_prev, r_curr1, r_curr2, r_curr3, (int)time_stop - (int)time_start);
-        } else {
-            outfile->Printf("  @LCCSDT iter %3d: %16.12f %10.3e %10.3e %10.3e %10.3e %8d\n", iteration, e_curr, e_curr - e_prev, r_curr1, r_curr2, r_curr3, (int)time_stop - (int)time_start);
-        }
+        outfile->Printf("  @LCCSDT iter %3d: %16.12f %10.3e %10.3e %10.3e %10.3e %8d\n", iteration, e_curr, e_curr - e_prev, r_curr1, r_curr2, r_curr3, (int)time_stop - (int)time_start);
 
         ++iteration;
 
@@ -2187,22 +2177,51 @@ void DLPNOCCSDT::lccsdt_iterations(bool cc3) {
 }
 
 double DLPNOCCSDT::compute_energy() {
+
+    /*
+    // Set extremely tight CCSD/MP2 pair cutoff (we want as many pairs treated at CCSD as possible since it is not the bottleneck)
+    // Non-zero to maintain linear-scaling
+    if not psi4.core.has_option_changed("DLPNO", "T_CUT_PAIRS"): psi4.core.set_local_option("DLPNO", "T_CUT_PAIRS", 1.0e-8)
+    // Analogously, weak triples cutoff also needs to be tightened
+    if not psi4.core.has_option_changed("DLPNO", "T_CUT_TRIPLES_WEAK"): psi4.core.set_local_option("DLPNO", "T_CUT_TRIPLES_WEAK", 1.0e-8)
+    // No weak pairs allowed to enter post-CCSD(T) computations (since we don't want mixed levels of theory like MP2+T amplitudes existing)
+    if not psi4.core.has_option_changed("DLPNO", "TRIPLES_MAX_WEAK_PAIRS"): psi4.core.set_local_option("DLPNO", "TRIPLES_MAX_WEAK_PAIRS", 0)
+    // DLPNO-CCSD(T) needs to be extra tight for post-CCSD(T) computations
+    if not psi4.core.has_option_changed("DLPNO", "T_CUT_TNO"): psi4.core.set_local_option("DLPNO", "T_CUT_TNO", 1.0e-10)
+    */
+
     // Run DLPNO-CCSD(T) as initial step
     double E_DLPNO_CCSD_T = DLPNOCCSD_T::compute_energy();
-
-    nthread_ = 1;
-#ifdef _OPENMP
-    nthread_ = Process::environment.get_n_threads();
-#endif
 
     timer_on("DLPNO-CCSDT");
 
     print_header();
 
-    // Sort list of triplets based on number of TNOs (for parallel efficiency)
-    int n_lmo_triplets = ijk_to_i_j_k_.size();
-    std::vector<std::pair<int, int>> ijk_tnos(n_lmo_triplets);
+    // => Loose DLPNO-CCSDT Algorithm!!! <= //
+    outfile->Printf("\n    Running initial DLPNO-CCSDT computation (at looser TNO tolerance) \n");
+    outfile->Printf("\n      * This is used to form better triples natural orbitals (TNOs) later on! \n\n");
 
+    // Compute TNOs
+    timer_on("Loose DLPNO-CCSDT : Computing TNOs");
+
+    int n_lmo_triplets = ijk_to_i_j_k_.size();
+    tno_scale_.clear();
+    tno_scale_.resize(n_lmo_triplets, 1.0);
+
+    double t_cut_tno_loose = options_.get_double("T_CUT_TNO_LOOSE");
+    double t_cut_trace_triples = options_.get_double("T_CUT_TRACE_TRIPLES");
+
+    outfile->Printf("\n\n");
+    outfile->Printf("    T_CUT_TNO set to %6.3e for initial triples  \n", t_cut_tno_loose);
+    outfile->Printf("    T_CUT_TRACE_TRIPLES (re)set to %.8f         \n", t_cut_trace_triples);
+
+    tno_transform(t_cut_tno_loose, t_cut_trace_triples);
+    compute_lccsd_t0(true);
+    lccsd_t_iterations();
+
+    // Sort list of triplets based on number of TNOs (for parallel efficiency)
+    std::vector<std::pair<int, int>> ijk_tnos(n_lmo_triplets);
+    
 #pragma omp parallel for
     for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
         ijk_tnos[ijk] = std::make_pair(ijk, n_tno_[ijk]);
@@ -2217,35 +2236,36 @@ double DLPNOCCSDT::compute_energy() {
     for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
         sorted_triplets_[ijk] = ijk_tnos[ijk].first;
     }
+    
+    timer_off("Loose DLPNO-CCSDT : Computing TNOs");
 
-    outfile->Printf("\n    Running initial DLPNO-CC3 computation at tighter TNO tolerance... \n\n");
+    nthread_ = 1;
+#ifdef _OPENMP
+    nthread_ = Process::environment.get_n_threads();
+#endif
 
-    // Run DLPNO-CC3 (tight TNOs)
+    // Run loose DLPNO-CCSDT
+    timer_on("Loose DLPNO-CCSDT : Estimate Memory");
+    estimate_memory();
+    timer_off("Loose DLPNO-CCSDT : Estimate Memory");
 
-    timer_on("DLPNO-CC3a : Estimate Memory");
-    estimate_memory(true);
-    timer_off("DLPNO-CC3a : Estimate Memory");
-
-    timer_on("DLPNO-CC3a : Compute Integrals");
+    timer_on("Loose DLPNO-CCSDT : Compute Integrals");
     compute_integrals();
-    timer_off("DLPNO-CC3a : Compute Integrals");
+    timer_off("Loose DLPNO-CCSDT : Compute Integrals");
 
-    timer_on("DLPNO-CC3a : Compute TNO overlaps");
-    compute_tno_overlaps(true);
-    timer_off("DLPNO-CC3a : Compute TNO overlaps");
+    timer_on("Loose DLPNO-CCSDT : Compute TNO overlaps");
+    compute_tno_overlaps();
+    timer_off("Loose DLPNO-CCSDT : Compute TNO overlaps");
 
-    timer_on("DLPNO-CC3a : LCC3 iterations");
-    lccsdt_iterations(true);
-    timer_off("DLPNO-CC3a : LCC3 iterations");
+    timer_on("Loose DLPNO-CCSDT : LCCSDT Iterations");
+    lccsdt_iterations();
+    timer_off("Loose DLPNO-CCSDT : LCCSDT Iterations");
 
-    dE_T_rank_ = 0.0;
+    double e_corr_init = e_lccsdt_ + de_weak_;
 
-    // Get DLPNO-CC3 energy at tighter TNO tolerance
-    double e_scf = variables_["SCF TOTAL ENERGY"];
-    double e_cc3_corr = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
-    double e_cc3_total = e_scf + e_cc3_corr;
+    // Run DLPNO-CCSDT (tighter TNO tolerance)
 
-    // => After T3 densities are recomputed using CC3 T2 amplitudes, we can loosen our TNO cutoff <= //
+    outfile->Printf("\n    Running final DLPNO-CCSDT computation at tighter TNO tolerance... \n\n");
 
     timer_on("DLPNO-CCSDT : Recomputing TNOs");
 
@@ -2253,14 +2273,18 @@ double DLPNOCCSDT::compute_energy() {
     tno_scale_.resize(n_lmo_triplets, 1.0);
 
     double t_cut_tno_full = options_.get_double("T_CUT_TNO_FULL");
+    t_cut_trace_triples = options_.get_double("T_CUT_TRACE_TRIPLES");
+    double t_cut_energy_triples = options_.get_double("T_CUT_ENERGY_TRIPLES");
 
-    outfile->Printf("    T_CUT_TNO (re)set to %6.3e for full triples \n", t_cut_tno_full);
-    tno_transform(t_cut_tno_full);
+    outfile->Printf("\n\n");
+    outfile->Printf("    T_CUT_TNO set to %6.3e for full triples     \n", t_cut_tno_full);
+    outfile->Printf("    T_CUT_TRACE_TRIPLES (re)set to %.8f         \n", t_cut_trace_triples);
 
-    double E_T0_loose = compute_lccsd_t0(true);
-    double E_T_loose = lccsd_t_iterations();
+    tno_transform(t_cut_tno_full, t_cut_trace_triples, t_cut_energy_triples);
+    double E_T0_new = compute_lccsd_t0(true);
+    double E_T_new = lccsd_t_iterations();
 
-    // Resort TNOs at looser tolerance
+    // Sort list of triplets based on number of TNOs (for parallel efficiency)
 #pragma omp parallel for
     for (int ijk = 0; ijk < n_lmo_triplets; ++ijk) {
         ijk_tnos[ijk] = std::make_pair(ijk, n_tno_[ijk]);
@@ -2278,8 +2302,6 @@ double DLPNOCCSDT::compute_energy() {
     
     timer_off("DLPNO-CCSDT : Recomputing TNOs");
 
-    // Run DLPNO-CCSDT
-
     timer_on("DLPNO-CCSDT : Estimate Memory");
     estimate_memory();
     timer_off("DLPNO-CCSDT : Estimate Memory");
@@ -2292,28 +2314,18 @@ double DLPNOCCSDT::compute_energy() {
     compute_tno_overlaps();
     timer_off("DLPNO-CCSDT : Compute TNO overlaps");
 
-    // => Compute LCC3 at looser TNO tolerance to get rank correction <= //
-
-    timer_on("DLPNO-CC3b : LCC3 iterations");
-    lccsdt_iterations(true);
-    timer_off("DLPNO-CC3b : LCC3 iterations");
-
-    // Get DLPNO-CC3 energy at tighter TNO tolerance
-    double e_cc3_corr_loose = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
-    double e_cc3_corr_total = e_scf + e_cc3_corr_loose;
-
-    dE_T_rank_ = e_cc3_corr - e_cc3_corr_loose;
-    outfile->Printf("\n  * CC3 TNO rank correction: %16.12f\n\n", dE_T_rank_);
-
     // Compute DLPNO-CCSDT energy
-
     timer_on("DLPNO-CCSDT : LCCSDT iterations");
     lccsdt_iterations();
     timer_off("DLPNO-CCSDT : LCCSDT iterations");
 
     timer_off("DLPNO-CCSDT");
 
-    double e_ccsdt_corr = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+    dE_T_rank_ = (e_lccsd_t_ - e_lccsd_ - E_T_);
+    outfile->Printf("\n  * (T) TNO rank correction: %16.12f\n\n", dE_T_rank_);
+
+    double e_scf = variables_["SCF TOTAL ENERGY"];
+    double e_ccsdt_corr = e_lccsdt_ + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
     double e_ccsdt_total = e_scf + e_ccsdt_corr;
 
     set_scalar_variable("CCSDT CORRELATION ENERGY", e_ccsdt_corr);
@@ -2341,7 +2353,7 @@ void DLPNOCCSDT::print_results() {
     }
     set_scalar_variable("CC T1 DIAGNOSTIC", t1diag);
 
-    double e_total = e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+    double e_total = e_lccsdt_ + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
 
     outfile->Printf("  \n");
     outfile->Printf("  Total DLPNO-CCSDT Correlation Energy: %16.12f \n", e_total);
@@ -2350,8 +2362,7 @@ void DLPNOCCSDT::print_results() {
     outfile->Printf("    Eliminated Pair MP2 Correction:     %16.12f \n", de_lmp2_eliminated_);
     outfile->Printf("    Dipole Pair Correction:             %16.12f \n", de_dipole_);
     outfile->Printf("    PNO Truncation Correction:          %16.12f \n", de_pno_total_);
-    outfile->Printf("    Triples Rank Correction (T0):       %16.12f \n", e_lccsd_t_ - e_lccsd_ - E_T_);
-    outfile->Printf("    CC3 TNO correction:                 %16.12f \n", dE_T_rank_);
+    outfile->Printf("    Triples Rank Correction:            %16.12f \n", dE_T_rank_);
     outfile->Printf("\n\n  @Total DLPNO-CCSDT Energy: %16.12f \n", variables_["SCF TOTAL ENERGY"] + e_total);
     outfile->Printf("    Lord Jesus, this song is forever Yours...\n\n");
 }
@@ -2401,7 +2412,7 @@ class DLPNOCCSDT_Q : public DLPNOCCSDT {
     /// Create sparsity maps for quadruples
     void quadruples_sparsity(bool prescreening);
     /// Create QNOs (Quadruplet Natural Orbitals) for DLPNO-(Q)
-    void qno_transform(double qno_tolerance);
+    void qno_transform(double qno_tolerance, double trace_tolerance=0.0);
     /// Sort quadruplets to split between "strong" and "weak" quadruplets (for (Q) iterations)
     void sort_quadruplets(double e_total);
 
@@ -2762,7 +2773,7 @@ void DLPNOCCSDT_Q::sort_quadruplets(double e_total) {
     timer_off("Sort Quadruplets");
 }
 
-void DLPNOCCSDT_Q::qno_transform(double t_cut_qno) {
+void DLPNOCCSDT_Q::qno_transform(double t_cut_qno, double trace_tolerance) {
     timer_on("QNO transform");
 
     int naocc = nalpha_ - nfrzc();
@@ -2791,6 +2802,9 @@ void DLPNOCCSDT_Q::qno_transform(double t_cut_qno) {
 
         D_ij_list[ij] = D_ij;
     }
+
+    std::vector<double> occ_qno(n_lmo_quadruplets, 0.0);
+    std::vector<double> trace_qno(n_lmo_quadruplets, 0.0);
 
 #pragma omp parallel for schedule(dynamic, 1)
     for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
@@ -2871,11 +2885,19 @@ void DLPNOCCSDT_Q::qno_transform(double t_cut_qno) {
         Vector qno_occ("eigenvalues", nvir_ijkl);
         D_ijkl->diagonalize(*X_qno_ijkl, qno_occ, descending);
 
+        // Compute trace sum
+        double occ_total = 0.0;
+        for (size_t a = 0; a < nvir_ijkl; ++a) {
+            occ_total += qno_occ.get(a);
+        }
+
         double qno_scale = qno_scale_[ijkl];
 
         int nvir_ijkl_final = 0;
+        double occ_curr = 0.0;
         for (size_t a = 0; a < nvir_ijkl; ++a) {
-            if (fabs(qno_occ.get(a)) >= qno_scale * t_cut_qno) {
+            if (fabs(qno_occ.get(a)) >= qno_scale * t_cut_qno || occ_curr / occ_total < trace_tolerance) {
+                occ_curr += qno_occ.get(a);
                 nvir_ijkl_final++;
             }
         }
@@ -2900,13 +2922,23 @@ void DLPNOCCSDT_Q::qno_transform(double t_cut_qno) {
         X_qno_[ijkl] = X_qno_ijkl;
         e_qno_[ijkl] = e_qno_ijkl;
         n_qno_[ijkl] = X_qno_ijkl->colspi(0);
+        occ_qno[ijkl] = qno_occ.get(n_qno_[ijkl] - 1);
+        trace_qno[ijkl] = occ_curr / occ_total;
     }
 
     int qno_count_total = 0, qno_count_min = C_pao_->colspi(0), qno_count_max = 0;
+    double occ_number_total = 0.0, occ_number_min = 2.0, occ_number_max = 0.0;
+    double trace_total = 0.0, trace_min = 1.0, trace_max = 0.0;
     for (int ijkl = 0; ijkl < n_lmo_quadruplets; ++ijkl) {
         qno_count_total += n_qno_[ijkl];
         qno_count_min = std::min(qno_count_min, n_qno_[ijkl]);
         qno_count_max = std::max(qno_count_max, n_qno_[ijkl]);
+        occ_number_total += occ_qno[ijkl];
+        occ_number_min = std::min(occ_number_min, occ_qno[ijkl]);
+        occ_number_max = std::max(occ_number_max, occ_qno[ijkl]);
+        trace_total += trace_qno[ijkl];
+        trace_min = std::min(trace_min, trace_qno[ijkl]);
+        trace_max = std::max(trace_max, trace_qno[ijkl]);
     }
 
     // From ChatGPT: N choose 4 (all distinct) + N choose 2 (two values appear twice) 
@@ -2922,6 +2954,12 @@ void DLPNOCCSDT_Q::qno_transform(double t_cut_qno) {
     outfile->Printf("      Avg: %3d NOs \n", qno_count_total / n_lmo_quadruplets);
     outfile->Printf("      Min: %3d NOs \n", qno_count_min);
     outfile->Printf("      Max: %3d NOs \n", qno_count_max);
+    outfile->Printf("      Avg Occ Number Tol: %.3e \n", occ_number_total / n_lmo_quadruplets);
+    outfile->Printf("      Min Occ Number Tol: %.3e \n", occ_number_min);
+    outfile->Printf("      Max Occ Number Tol: %.3e \n", occ_number_max);
+    outfile->Printf("      Avg Trace Sum: %.6f \n", trace_total / n_lmo_quadruplets);
+    outfile->Printf("      Min Trace Sum: %.6f \n", trace_min);
+    outfile->Printf("      Max Trace Sum: %.6f \n", trace_max);
     outfile->Printf("  \n");
 
     // Sort list of quadruplets based on number of QNOs (for parallel efficiency)
@@ -3766,6 +3804,71 @@ double DLPNOCCSDT_Q::compute_energy() {
     // Run DLPNO-CCSDT
     double e_dlpno_ccsdt = DLPNOCCSDT::compute_energy();
 
+    // Clear CCSD integrals
+    K_mnij_.clear();
+    K_bar_.clear();
+    K_bar_chem_.clear();
+    L_bar_.clear();
+    J_ijab_.clear();
+    L_iajb_.clear();
+    M_iajb_.clear();
+    J_ij_kj_.clear();
+    K_ij_kj_.clear();
+    K_tilde_chem_.clear();
+    K_tilde_phys_.clear();
+    L_tilde_.clear();
+    Qma_ij_.clear();
+    Qab_ij_.clear();
+    i_Qk_ij_.clear();
+    i_Qa_ij_.clear();
+    i_Qa_ij_.clear();
+    i_Qa_t1_.clear();
+    S_pno_ij_kj_.clear();
+    S_pno_ij_nn_.clear();
+    S_pno_ij_mn_.clear();
+
+    // Clear CCSDT integrals
+    S_ijk_ii_.clear();
+    S_ijk_jj_.clear();
+    S_ijk_kk_.clear();
+    S_ijk_ll_.clear();
+    S_ijk_ij_.clear();
+    S_ijk_jk_.clear();
+    S_ijk_ik_.clear();
+    S_ijk_il_.clear();
+    S_ijk_jl_.clear();
+    S_ijk_kl_.clear();
+    S_ijk_lm_.clear();
+    S_ijk_ljk_.clear();
+    S_ijk_ilk_.clear();
+    S_ijk_ijl_.clear();
+    S_ijk_mli_.clear();
+    S_ijk_mlj_.clear();
+    S_ijk_mlk_.clear();
+    K_iojv_.clear();
+    K_joiv_.clear();
+    K_jokv_.clear();
+    K_kojv_.clear();
+    K_iokv_.clear();
+    K_koiv_.clear();
+    K_ivjv_.clear();
+    K_jvkv_.clear();
+    K_ivkv_.clear();
+    K_ivov_.clear();
+    K_jvov_.clear();
+    K_kvov_.clear();
+    K_ivvv_.clear();
+    K_jvvv_.clear();
+    K_kvvv_.clear();
+    q_io_.clear();
+    q_jo_.clear();
+    q_ko_.clear();
+    q_iv_.clear();
+    q_jv_.clear();
+    q_kv_.clear();
+    q_ov_.clear();
+    q_vv_.clear();
+
     // Re-create T_iajbkc_clone intermediate
     int n_lmo_triplets = ijk_to_i_j_k_.size();
 #pragma omp parallel for schedule(dynamic, 1)
@@ -3779,6 +3882,7 @@ double DLPNOCCSDT_Q::compute_energy() {
 
     double t_cut_qno_pre = options_.get_double("T_CUT_QNO_PRE");
     double t_cut_qno = options_.get_double("T_CUT_QNO");
+    double t_cut_trace_quadruples_pre = options_.get_double("T_CUT_TRACE_QUADS_PRE");
 
     // Step 1: Perform the prescreening
     outfile->Printf("\n   Starting Quadruplet Prescreening...\n");
@@ -3787,7 +3891,7 @@ double DLPNOCCSDT_Q::compute_energy() {
     outfile->Printf("     T_CUT_MKN set to %6.3e \n\n", options_.get_double("T_CUT_MKN_QUADS_PRE"));
 
     quadruples_sparsity(true);
-    qno_transform(t_cut_qno_pre);
+    qno_transform(t_cut_qno_pre, t_cut_trace_quadruples_pre);
     double E_Q0_pre = compute_gamma_ijkl(false);
     outfile->Printf("    (Initial) DLPNO-(Q0) Correlation Energy: %16.12f\n\n", E_Q0_pre);
 
@@ -3801,13 +3905,15 @@ double DLPNOCCSDT_Q::compute_energy() {
     outfile->Printf("     T_CUT_DO  (re)set to %6.3e \n", options_.get_double("T_CUT_DO_QUADS"));
     outfile->Printf("     T_CUT_MKN (re)set to %6.3e \n\n", options_.get_double("T_CUT_MKN_QUADS"));
 
-    qno_transform(t_cut_qno);
+    double t_cut_trace_quadruples = options_.get_double("T_CUT_TRACE_QUADS");
+
+    qno_transform(t_cut_qno, t_cut_trace_quadruples);
     double E_Q0 = compute_gamma_ijkl(false);
     outfile->Printf("    (Total) DLPNO-(Q0) Correlation Energy:      %16.12f\n", E_Q0 + de_lccsdt_q_screened_);
     outfile->Printf("    * Screened Quadruplets Contribution:        %16.12f\n", de_lccsdt_q_screened_);
 
     double e_scf = variables_["SCF TOTAL ENERGY"];
-    double e_ccsdt_q0_corr = E_Q0 + de_lccsdt_q_screened_ + e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+    double e_ccsdt_q0_corr = E_Q0 + de_lccsdt_q_screened_ + e_lccsdt_ + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
     double e_ccsdt_q0_total = e_scf + e_ccsdt_q0_corr;
 
     outfile->Printf("\n\n  @Total DLPNO-CCSDT(Q0) Energy: %16.12f\n", e_ccsdt_q0_total);
@@ -3842,7 +3948,7 @@ double DLPNOCCSDT_Q::compute_energy() {
         outfile->Printf("    * DLPNO-(Q) Contribution:                   %16.12f\n", dE_Q);
         outfile->Printf("    * Screened Quadruplets Contribution:        %16.12f\n", de_lccsdt_q_screened_);
 
-        double e_ccsdt_q_corr = E_Q0 + dE_Q + de_lccsdt_q_screened_ + e_lccsdt_ + (e_lccsd_t_ - e_lccsd_ - E_T_) + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
+        double e_ccsdt_q_corr = E_Q0 + dE_Q + de_lccsdt_q_screened_ + e_lccsdt_ + dE_T_rank_ + de_weak_ + de_lmp2_eliminated_ + de_dipole_ + de_pno_total_;
         double e_ccsdt_q_total = e_scf + e_ccsdt_q_corr;
         e_total = e_ccsdt_q_total;
 
@@ -3867,16 +3973,18 @@ int read_options(std::string name, Options& options)
         options.add_int("BENCH", 0);
         /*- Basis set -*/
         options.add_str("DF_BASIS_MP2", "");
-        /*- Perform CC3 instead of full triples? -*/
+        /*- Perform CC3 instead of full triples? (now obsolete) -*/
         options.add_bool("DLPNO_CC3", false);
 
         // => Triples Options <= //
+        options.add_double("T_CUT_TNO_LOOSE", 1.0e-6);
         options.add_double("T_CUT_TNO_FULL", 1.0e-7);
+        options.add_bool("DLPNO_CCSDT_DISK_DIIS", false);
 
         // => Quadruples Options <= //
         options.add_bool("RUN_Q", false);
         options.add_bool("Q0_ONLY", false);
-        options.add_bool("QUADS_MAX_WEAK_PAIRS", 3);
+        options.add_bool("QUADS_MAX_WEAK_PAIRS", 0);
         options.add_double("T_CUT_QUADS_WEAK", 1.0e-8);
         options.add_double("T_CUT_MKN_QUADS_PRE", 1.0e-1);
         options.add_double("T_CUT_MKN_QUADS", 1.0e-2);
@@ -3886,6 +3994,8 @@ int read_options(std::string name, Options& options)
         options.add_double("T_CUT_QNO_WEAK_SCALE", 10.0);
         options.add_double("T_CUT_QNO", 1.0e-6);
         options.add_double("T_CUT_QNO_PRE", 1.0e-5);
+        options.add_double("T_CUT_TRACE_QUADS_PRE", 0.0);
+        options.add_double("T_CUT_TRACE_QUADS", 0.0);
         options.add_double("F_CUT_Q", 1.0e-3);
         options.add_double("T_CUT_ITER_Q", 1.0e-4);
     }

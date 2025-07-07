@@ -7,3 +7,7 @@ alkanes/*
 waterclusters/*
 pericyclic/*
 hcno/*
+benzene/*
+*.in
+*.out
+*.log
