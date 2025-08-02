@@ -32,13 +32,13 @@ cmake_minimum_required(VERSION 3.19 FATAL_ERROR)
 
 project(dlpno_ccsdt_q CXX)
 
-set(Einsums_DIR /home/aj48384/github/EinsumsInCpp/install/share/cmake/Einsums)
-set(psi4_DIR /home/aj48384/github/psi4/objdir_p4sums/stage/share/cmake/psi4)
-set(CMAKE_BUILD_TYPE RelWithDebInfo)
+set(Einsums_DIR /home/ajiang10224/miniconda3/envs/p4dev/include/Einsums)
+set(psi4_DIR /home/ajiang10224/github/psi4/objdir_p4dev/stage/share/cmake/psi4)
+set(CMAKE_BUILD_TYPE Release)
 
 find_package(psi4 1.1 REQUIRED)
 find_package(Einsums REQUIRED)
 
 add_psi4_plugin(dlpno_ccsdt_q plugin.cc)
 #target_compile_definitions(dlpno_ccsdt_q PUBLIC EINSUMS_TEST_NANS EINSUMS_ONLY_USE_GENERIC_ALGORITHM)
-target_link_libraries(dlpno_ccsdt_q PUBLIC Einsums::einsums)
+target_link_libraries(dlpno_ccsdt_q PUBLIC Einsums::Einsums)

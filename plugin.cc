@@ -44,27 +44,25 @@
 #include "psi4/libdiis/diismanager.h"
 #include "psi4/libqt/qt.h"
 
-#include "/home/aj48384/github/psi4/psi4/src/psi4/dlpno/dlpno.h"
-#include "/home/aj48384/github/psi4/psi4/src/psi4/dlpno/sparse.h"
+#include "/home/ajiang10224/github/psi4/psi4/src/psi4/dlpno/dlpno.h"
+#include "/home/ajiang10224/github/psi4/psi4/src/psi4/dlpno/sparse.h"
 
 #include <memory>
 #include <algorithm>
 #include <unordered_map>
 
-#include "einsums/Tensor.hpp"
-#include "einsums/TensorAlgebra.hpp"
-#include "einsums/LinearAlgebra.hpp"
-#include "einsums/Sort.hpp"
-#include "einsums/Timer.hpp"
-#include "einsums/Print.hpp"
+#include "Einsums/Tensor.hpp"
+#include "Einsums/TensorAlgebra.hpp"
+#include "Einsums/LinearAlgebra.hpp"
+#include "Einsums/Profile.hpp"
 
 using namespace psi;
 using namespace psi::dlpno;
 
 using namespace einsums;
+using namespace einsums::index;
 using namespace einsums::linear_algebra;
 using namespace einsums::tensor_algebra;
-using namespace einsums::tensor_algebra::index;
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -204,13 +202,13 @@ Tensor<double, 3> DLPNOCCSDT::matmul_3d_einsums(const Tensor<double, 3> &A, cons
     einsum(0.0, Indices{index::I, index::J, index::k}, &A_new1, 1.0, Indices{index::I, index::J, index::K}, A, Indices{index::k, index::K}, Xview);
 
     Tensor<double, 3> A_new2("A_new2", dim_old, dim_new, dim_old);
-    sort(Indices{index::I, index::k, index::J}, &A_new2, Indices{index::I, index::J, index::k}, A_new1);
+    permute(Indices{index::I, index::k, index::J}, &A_new2, Indices{index::I, index::J, index::k}, A_new1);
 
     Tensor<double, 3> A_new3("A_new3", dim_old, dim_new, dim_new);
     einsum(0.0, Indices{index::I, index::k, index::j}, &A_new3, 1.0, Indices{index::I, index::k, index::J}, A_new2, Indices{index::j, index::J}, Xview);
 
     Tensor<double, 3> A_new4("A_new4", dim_old, dim_new, dim_new);
-    sort(Indices{index::I, index::j, index::k}, &A_new4, Indices{index::I, index::k, index::j}, A_new3);
+    permute(Indices{index::I, index::j, index::k}, &A_new4, Indices{index::I, index::k, index::j}, A_new3);
 
     Tensor<double, 3> A_new("A_new", dim_new, dim_new, dim_new);
     einsum(0.0, Indices{index::i, index::j, index::k}, &A_new, 1.0, Indices{index::i, index::I}, Xview, Indices{index::I, index::j, index::k}, A_new4);
@@ -223,15 +221,15 @@ Tensor<double, 3> DLPNOCCSDT::triples_permuter_einsums(const Tensor<double, 3> &
     Tensor<double, 3> Xperm = X;
 
     if (i <= k && k <= j && i <= j) {
-        sort(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::a, index::c, index::b}, X);
+        permute(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::a, index::c, index::b}, X);
     } else if (j <= i && i <= k && j <= k) {
-        sort(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::b, index::a, index::c}, X);
+        permute(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::b, index::a, index::c}, X);
     } else if (j <= k && k <= i && j <= i) {
-        sort(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::b, index::c, index::a}, X);
+        permute(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::b, index::c, index::a}, X);
     } else if (k <= i && i <= j && k <= j) {
-        sort(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::c, index::a, index::b}, X);
+        permute(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::c, index::a, index::b}, X);
     } else if (k <= j && j <= i && k <= i) {
-        sort(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::c, index::b, index::a}, X);
+        permute(Indices{index::a, index::b, index::c}, &Xperm, Indices{index::c, index::b, index::a}, X);
     }
 
     return Xperm;
@@ -834,16 +832,16 @@ void DLPNOCCSDT::compute_R_ia_triples(std::vector<SharedMatrix>& R_ia, std::vect
             
             Tensor<double, 3> U_ijk = U_iajbkc_[ijk];
             if (perm_idx == 1) {
-                sort(Indices{index::b, index::a, index::c}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
+                permute(Indices{index::b, index::a, index::c}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (perm_idx == 2) {
-                sort(Indices{index::c, index::a, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
+                permute(Indices{index::c, index::a, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             }
 
             Tensor<double, 1> R_ia_cont("R_ia_cont", n_tno_[ijk]);
             einsum(0.0, Indices{index::a}, &R_ia_cont, prefactor, Indices{index::a, index::b, index::c}, U_ijk, Indices{index::b, index::c}, K_ovov_list[perm_idx]);
 
             auto R_ia_psi = std::make_shared<Matrix>(n_tno_[ijk], 1);
-            ::memcpy(R_ia_psi->get_pointer(), &(R_ia_cont)(0, 0), n_tno_[ijk] * sizeof(double));
+            ::memcpy(R_ia_psi->get_pointer(), &(R_ia_cont)(0), n_tno_[ijk] * sizeof(double));
 
             R_ia_buffer[thread][i]->add(linalg::doublet(S_ijk_ii_list[perm_idx], R_ia_psi, true, false));
         }
@@ -918,16 +916,16 @@ void DLPNOCCSDT::compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::
             // (T1-dressed Fock Matrix) F_kc = [2.0 * (kc|ld) - (kd|lc)] t_{ld}
             Tensor<double, 1> Fkc("Fkc", ntno_ijk);
             Tensor<double, 3> K_lckd = K_kvov_list[idx];
-            sort(Indices{index::l, index::c, index::d}, &K_lckd, Indices{index::l, index::d, index::c}, K_kvov_list[idx]);
+            permute(Indices{index::l, index::c, index::d}, &K_lckd, Indices{index::l, index::d, index::c}, K_kvov_list[idx]);
 
             einsum(0.0, Indices{index::c}, &Fkc, 2.0, Indices{index::l, index::d, index::c}, K_kvov_list[idx], Indices{index::l, index::d}, T_n_ijk_[ijk]);
             einsum(1.0, Indices{index::c}, &Fkc, -1.0, Indices{index::l, index::d, index::c}, K_lckd, Indices{index::l, index::d}, T_n_ijk_[ijk]);
 
             auto U_ijk = U_iajbkc_[ijk];
             if (idx == 1) {
-                sort(Indices{index::a, index::c, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
+                permute(Indices{index::a, index::c, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (idx == 2) {
-                sort(Indices{index::b, index::c, index::a}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
+                permute(Indices{index::b, index::c, index::a}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             }
             
             einsum(0.0, Indices{index::a, index::b}, &R_iajb_cont_a, prefactor, Indices{index::a, index::b, index::c}, U_ijk, Indices{index::c}, Fkc);
@@ -942,11 +940,11 @@ void DLPNOCCSDT::compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::
                                                         std::make_tuple(k, i, j), std::make_tuple(k, j, i)};
 
         Tensor<double, 2> K_kvjv = K_jvkv_[ijk];
-        sort(Indices{index::b, index::a}, &K_kvjv, Indices{index::a, index::b}, K_jvkv_[ijk]);
+        permute(Indices{index::b, index::a}, &K_kvjv, Indices{index::a, index::b}, K_jvkv_[ijk]);
         Tensor<double, 2> K_kviv = K_ivkv_[ijk];
-        sort(Indices{index::b, index::a}, &K_kviv, Indices{index::a, index::b}, K_ivkv_[ijk]);
+        permute(Indices{index::b, index::a}, &K_kviv, Indices{index::a, index::b}, K_ivkv_[ijk]);
         Tensor<double, 2> K_jviv = K_ivjv_[ijk];
-        sort(Indices{index::b, index::a}, &K_jviv, Indices{index::a, index::b}, K_ivjv_[ijk]);
+        permute(Indices{index::b, index::a}, &K_jviv, Indices{index::a, index::b}, K_ivjv_[ijk]);
 
         std::vector<Tensor<double, 2>> K_jokv_list = {K_jokv_[ijk], K_kojv_[ijk], K_iokv_[ijk], K_koiv_[ijk], K_iojv_[ijk], K_joiv_[ijk]};
         std::vector<Tensor<double, 2>> K_ovov_list = {K_jvkv_[ijk], K_kvjv, K_ivkv_[ijk], K_kviv, K_ivjv_[ijk], K_jviv};
@@ -964,15 +962,15 @@ void DLPNOCCSDT::compute_R_iajb_triples(std::vector<SharedMatrix>& R_iajb, std::
 
             auto U_ijk = U_iajbkc_[ijk];
             if (idx == 1) {
-                sort(Indices{index::a, index::c, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
+                permute(Indices{index::a, index::c, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (idx == 2) {
-                sort(Indices{index::b, index::a, index::c}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
+                permute(Indices{index::b, index::a, index::c}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (idx == 3) {
-                sort(Indices{index::b, index::c, index::a}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
+                permute(Indices{index::b, index::c, index::a}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (idx == 4) {
-                sort(Indices{index::c, index::a, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
+                permute(Indices{index::c, index::a, index::b}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             } else if (idx == 5) {
-                sort(Indices{index::c, index::b, index::a}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
+                permute(Indices{index::c, index::b, index::a}, &U_ijk, Indices{index::a, index::b, index::c}, U_iajbkc_[ijk]);
             }
 
             // (T1-dressed integral g_jlkc)
@@ -1111,7 +1109,7 @@ void DLPNOCCSDT::compute_R_iajbkc_cc3(std::vector<SharedMatrix>& R_iajbkc) {
                     t_name << "T " << (ijl);
                     T_ijl = std::make_shared<Matrix>(t_name.str(), n_tno_[ijl], n_tno_[ijl] * n_tno_[ijl]);
 #pragma omp critical
-                    T_ijl->load(psio_.get(), PSIF_DLPNO_TRIPLES, psi::Matrix::Full);
+                    T_ijl->load(psio_.get(), PSIF_DLPNO_TRIPLES, psi::Matrix::SubBlocks);
                 } else {
                     T_ijl = T_iajbkc_[ijl];
                 }
@@ -1135,7 +1133,7 @@ void DLPNOCCSDT::compute_R_iajbkc_cc3(std::vector<SharedMatrix>& R_iajbkc) {
                     t_name << "T " << (ilk);
                     T_ilk = std::make_shared<Matrix>(t_name.str(), n_tno_[ilk], n_tno_[ilk] * n_tno_[ilk]);
 #pragma omp critical
-                    T_ilk->load(psio_.get(), PSIF_DLPNO_TRIPLES, psi::Matrix::Full);
+                    T_ilk->load(psio_.get(), PSIF_DLPNO_TRIPLES, psi::Matrix::SubBlocks);
                 } else {
                     T_ilk = T_iajbkc_[ilk];
                 }
@@ -1159,7 +1157,7 @@ void DLPNOCCSDT::compute_R_iajbkc_cc3(std::vector<SharedMatrix>& R_iajbkc) {
                     t_name << "T " << (ljk);
                     T_ljk = std::make_shared<Matrix>(t_name.str(), n_tno_[ljk], n_tno_[ljk] * n_tno_[ljk]);
 #pragma omp critical
-                    T_ljk->load(psio_.get(), PSIF_DLPNO_TRIPLES, psi::Matrix::Full);
+                    T_ljk->load(psio_.get(), PSIF_DLPNO_TRIPLES, psi::Matrix::SubBlocks);
                 } else {
                     T_ljk = T_iajbkc_[ljk];
                 }
@@ -1205,7 +1203,7 @@ void DLPNOCCSDT::compute_R_iajbkc_cc3(std::vector<SharedMatrix>& R_iajbkc) {
         // This one is special... the second index is dressed instead of the first (per convention), to increase computational efficiency
         Tensor<double, 3> q_vv_t1 = q_vv_[ijk];
         Tensor<double, 3> q_vo("q_vo", naux_ijk, ntno_ijk, nlmo_ijk);
-        sort(Indices{index::Q, index::a, index::l}, &q_vo, Indices{index::Q, index::l, index::a}, q_ov_[ijk]);
+        permute(Indices{index::Q, index::a, index::l}, &q_vo, Indices{index::Q, index::l, index::a}, q_ov_[ijk]);
         einsum(1.0, Indices{index::Q, index::a, index::b}, &q_vv_t1, -1.0, Indices{index::Q, index::a, index::l}, q_vo, Indices{index::l, index::b}, T_n_ijk_[ijk]);
 
         Tensor<double, 2> q_io_t1 = q_io_[ijk];
@@ -1342,7 +1340,7 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         // This one is special... the second index is dressed instead of the first (per convention), to increase computational efficiency
         Tensor<double, 3> q_vv_t1 = q_vv_[ijk];
         Tensor<double, 3> q_vo("q_vo", naux_ijk, ntno_ijk, nlmo_ijk);
-        sort(Indices{index::Q, index::a, index::l}, &q_vo, Indices{index::Q, index::l, index::a}, q_ov_[ijk]);
+        permute(Indices{index::Q, index::a, index::l}, &q_vo, Indices{index::Q, index::l, index::a}, q_ov_[ijk]);
         einsum(1.0, Indices{index::Q, index::a, index::b}, &q_vv_t1, -1.0, Indices{index::Q, index::a, index::l}, q_vo, Indices{index::l, index::b}, T_n_ijk_[ijk]);
 
         Tensor<double, 2> q_io_t1 = q_io_[ijk];
@@ -1372,7 +1370,7 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             Tensor<double, 3> F_ld_K_temp("F_ld_K_temp", naux_ijk, nlmo_ijk, nlmo_ijk);
             einsum(0.0, Indices{index::Q, index::l, index::m}, &F_ld_K_temp, 1.0, Indices{index::Q, index::l, index::e}, q_ov_[ijk], Indices{index::m, index::e}, T_n_ijk_[ijk]);
             Tensor<double, 3> F_ld_K_temp2("F_ld_K_temp2", naux_ijk, nlmo_ijk, nlmo_ijk);
-            sort(Indices{index::Q, index::m, index::l}, &F_ld_K_temp2, Indices{index::Q, index::l, index::m}, F_ld_K_temp);
+            permute(Indices{index::Q, index::m, index::l}, &F_ld_K_temp2, Indices{index::Q, index::l, index::m}, F_ld_K_temp);
             einsum(1.0, Indices{index::l, index::d}, &F_ld, -1.0, Indices{index::Q, index::m, index::l}, F_ld_K_temp2, Indices{index::Q, index::m, index::d}, q_ov_[ijk]);
         }
 
@@ -1416,7 +1414,7 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             Tensor<double, 3> F_ad_K_temp("F_ad_K_temp", naux_ijk, ntno_ijk, nlmo_ijk);
             einsum(0.0, Indices{index::Q, index::a, index::m}, &F_ad_K_temp, 1.0, Indices{index::Q, index::a, index::e}, q_vv_[ijk], Indices{index::m, index::e}, T_n_ijk_[ijk]);
             Tensor<double, 3> F_ad_K_temp2("F_ad_K_temp", naux_ijk, nlmo_ijk, ntno_ijk);
-            sort(Indices{index::Q, index::m, index::a}, &F_ad_K_temp2, Indices{index::Q, index::a, index::m}, F_ad_K_temp);
+            permute(Indices{index::Q, index::m, index::a}, &F_ad_K_temp2, Indices{index::Q, index::a, index::m}, F_ad_K_temp);
             einsum(1.0, Indices{index::a, index::d}, &F_ad, -1.0, Indices{index::Q, index::m, index::a}, F_ad_K_temp2, Indices{index::Q, index::m, index::d}, q_ov_[ijk]);
 
             // Add the F_ld contribution to F_ad
@@ -1480,17 +1478,17 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
         Tensor<double, 4> K_dble("K_dble", ntno_ijk, ntno_ijk, nlmo_ijk, ntno_ijk);
         einsum(0.0, Indices{index::d, index::b, index::l, index::e}, &K_dble, 1.0, Indices{index::Q, index::d, index::b}, q_vv_t1, Indices{index::Q, index::l, index::e}, q_ov_[ijk]);
         Tensor<double, 4> K_dble_T("K_dble_T", ntno_ijk, ntno_ijk, nlmo_ijk, ntno_ijk);
-        sort(Indices{index::e, index::b, index::l, index::d}, &K_dble_T, Indices{index::d, index::b, index::l, index::e}, K_dble);
+        permute(Indices{index::e, index::b, index::l, index::d}, &K_dble_T, Indices{index::d, index::b, index::l, index::e}, K_dble);
         Tensor<double, 4> K_dble_T2("K_dble_T2", nlmo_ijk, ntno_ijk, ntno_ijk, ntno_ijk);
-        sort(Indices{index::l, index::c, index::e, index::d}, &K_dble_T2, Indices{index::d, index::c, index::l, index::e}, K_dble);
+        permute(Indices{index::l, index::c, index::e, index::d}, &K_dble_T2, Indices{index::d, index::c, index::l, index::e}, K_dble);
 
         // K_ldme integrals
         Tensor<double, 4> K_ldme("K_ldme", nlmo_ijk, ntno_ijk, nlmo_ijk, ntno_ijk);
         einsum(0.0, Indices{index::l, index::d, index::m, index::e}, &K_ldme, 1.0, Indices{index::Q, index::l, index::d}, q_ov_[ijk], Indices{index::Q, index::m, index::e}, q_ov_[ijk]);
         Tensor<double, 4> K_ldme_T("K_ldme_T", nlmo_ijk, nlmo_ijk, ntno_ijk, ntno_ijk);
-        sort(Indices{index::l, index::m, index::d, index::e}, &K_ldme_T, Indices{index::l, index::d, index::m, index::e}, K_ldme);
+        permute(Indices{index::l, index::m, index::d, index::e}, &K_ldme_T, Indices{index::l, index::d, index::m, index::e}, K_ldme);
         Tensor<double, 4> K_ldme_T2("K_ldme_T2", nlmo_ijk, ntno_ijk, nlmo_ijk, ntno_ijk);
-        sort(Indices{index::l, index::e, index::m, index::d}, &K_ldme_T2, Indices{index::l, index::d, index::m, index::e}, K_ldme);
+        permute(Indices{index::l, index::e, index::m, index::d}, &K_ldme_T2, Indices{index::l, index::d, index::m, index::e}, K_ldme);
 
         // Load in overlap integrals from disk
         if (disk_overlap_) {
@@ -1583,7 +1581,7 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             Tensor<double, 3> K_limd("K_limd", nlmo_ijk, nlmo_ijk, ntno_ijk);
             einsum(0.0, Indices{index::l, index::m, index::d}, &K_limd, 1.0, Indices{index::Q, index::l}, q_io_t1_list[idx], Indices{index::Q, index::m, index::d}, q_ov_[ijk]);
             Tensor<double, 3> K_limd_T("K_limd_T", nlmo_ijk, nlmo_ijk, ntno_ijk);
-            sort(Indices{index::m, index::l, index::d}, &K_limd_T, Indices{index::l, index::m, index::d}, K_limd);
+            permute(Indices{index::m, index::l, index::d}, &K_limd_T, Indices{index::l, index::m, index::d}, K_limd);
             einsum(1.0, Indices{index::d, index::b, index::c}, &rho_dbck_list[idx], 1.0, Indices{index::m, index::l, index::d}, K_limd_T, Indices{index::m, index::l, index::b, index::c}, T_lm);
 
             einsum(1.0, Indices{index::d, index::b, index::c}, &rho_dbck_list[idx], 1.0, Indices{index::d, index::b, index::l, index::e}, K_dble, Indices{index::l, index::e, index::c}, U_li);
@@ -1591,11 +1589,11 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             einsum(1.0, Indices{index::d, index::b, index::c}, &rho_dbck_list[idx], -1.0, Indices{index::d, index::b, index::l, index::e}, K_dble_T, Indices{index::l, index::e, index::c}, T_li);
 
             Tensor<double, 3> T_li_T("T_li_T", nlmo_ijk, ntno_ijk, ntno_ijk);
-            sort(Indices{index::l, index::e, index::b}, &T_li_T, Indices{index::l, index::b, index::e}, T_li);
+            permute(Indices{index::l, index::e, index::b}, &T_li_T, Indices{index::l, index::b, index::e}, T_li);
             Tensor<double, 3> rho_dbck_temp("rho_dbck_temp", ntno_ijk, ntno_ijk, ntno_ijk);
             einsum(0.0, Indices{index::d, index::c, index::b}, &rho_dbck_temp, 1.0, Indices{index::d, index::c, index::l, index::e}, K_dble_T, Indices{index::l, index::e, index::b}, T_li_T);
             Tensor<double, 3> rho_dbck_temp2("rho_dbck_temp2", ntno_ijk, ntno_ijk, ntno_ijk);
-            sort(Indices{index::d, index::b, index::c}, &rho_dbck_temp2, Indices{index::d, index::c, index::b}, rho_dbck_temp);
+            permute(Indices{index::d, index::b, index::c}, &rho_dbck_temp2, Indices{index::d, index::c, index::b}, rho_dbck_temp);
             rho_dbck_list[idx] -= rho_dbck_temp2;
 
             // Triples terms (ca-nasty)
@@ -1616,10 +1614,10 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                         triples_permuter_einsums(T_iajbkc_clone_[mli], m, l, i), S_ijk_mli, n_tno_[mli], n_tno_[ijk]);
 
                     Tensor<double, 3> T_lmi("T_lmi", ntno_ijk, ntno_ijk, ntno_ijk);
-                    sort(Indices{index::b, index::a, index::c}, &T_lmi, Indices{index::a, index::b, index::c}, T_mli);
+                    permute(Indices{index::b, index::a, index::c}, &T_lmi, Indices{index::a, index::b, index::c}, T_mli);
 
                     Tensor<double, 3> T_ilm("T_ilm", ntno_ijk, ntno_ijk, ntno_ijk);
-                    sort(Indices{index::c, index::b, index::a}, &T_ilm, Indices{index::a, index::b, index::c}, T_mli);
+                    permute(Indices{index::c, index::b, index::a}, &T_ilm, Indices{index::a, index::b, index::c}, T_mli);
 
                     T_mli *= 2.0;
                     T_mli -= T_lmi;
@@ -1685,14 +1683,14 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             einsum(1.0, Indices{index::l, index::c}, &rho_ljck_list[idx], 1.0, Indices{index::m, index::d, index::l}, K_mdlj, Indices{index::m, index::d, index::c}, U_mk);
 
             Tensor<double, 3> K_mdlj_T("K_mdlj_T", nlmo_ijk, nlmo_ijk, ntno_ijk);
-            sort(Indices{index::l, index::m, index::d}, &K_mdlj_T, Indices{index::l, index::d, index::m}, K_mdlj);
+            permute(Indices{index::l, index::m, index::d}, &K_mdlj_T, Indices{index::l, index::d, index::m}, K_mdlj);
             einsum(1.0, Indices{index::l, index::c}, &rho_ljck_list[idx], -1.0, Indices{index::l, index::m, index::d}, K_mdlj_T, Indices{index::m, index::d, index::c}, T_mk);
 
             Tensor<double, 3> K_ldmk("K_ldmk", nlmo_ijk, ntno_ijk, nlmo_ijk);
             einsum(0.0, Indices{index::l, index::d, index::m}, &K_ldmk, 1.0, Indices{index::Q, index::l, index::d}, q_ov_[ijk], Indices{index::Q, index::m}, q_io_t1_list[k_idx]);
 
             Tensor<double, 3> K_ldmk_T("K_ldmk_T", nlmo_ijk, nlmo_ijk, ntno_ijk);
-            sort(Indices{index::l, index::m, index::d}, &K_ldmk_T, Indices{index::l, index::d, index::m}, K_ldmk);
+            permute(Indices{index::l, index::m, index::d}, &K_ldmk_T, Indices{index::l, index::d, index::m}, K_ldmk);
 
             einsum(1.0, Indices{index::l, index::c}, &rho_ljck_list[idx], -1.0, Indices{index::l, index::m, index::d}, K_ldmk_T, Indices{index::m, index::d, index::c}, T_jm);
 
@@ -1716,10 +1714,10 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                     triples_permuter_einsums(T_iajbkc_clone_[mjk], m, j, k), S_ijk_mjk, n_tno_[mjk], n_tno_[ijk]);
 
                 Tensor<double, 3> T_kjm("T_kjm", ntno_ijk, ntno_ijk, ntno_ijk);
-                sort(Indices{index::c, index::b, index::a}, &T_kjm, Indices{index::a, index::b, index::c}, T_mjk);
+                permute(Indices{index::c, index::b, index::a}, &T_kjm, Indices{index::a, index::b, index::c}, T_mjk);
 
                 Tensor<double, 3> T_jmk("T_jmk", ntno_ijk, ntno_ijk, ntno_ijk);
-                sort(Indices{index::b, index::a, index::c}, &T_jmk, Indices{index::a, index::b, index::c}, T_mjk);
+                permute(Indices{index::b, index::a, index::c}, &T_jmk, Indices{index::a, index::b, index::c}, T_mjk);
 
                 T_mjk *= 2.0;
                 T_mjk -= T_kjm;
@@ -1815,7 +1813,7 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
 
             Tensor<double, 4> U_lm = T_lm;
             Tensor<double, 4> T_lm_T("T_lm_T", nlmo_ijk, nlmo_ijk, ntno_ijk, ntno_ijk);
-            sort(Indices{index::l, index::m, index::e, index::d}, &T_lm_T, Indices{index::l, index::m, index::d, index::e}, T_lm);
+            permute(Indices{index::l, index::m, index::e, index::d}, &T_lm_T, Indices{index::l, index::m, index::d, index::e}, T_lm);
             U_lm *= 2.0;
             U_lm -= T_lm_T;
             einsum(1.0, Indices{index::a, index::d}, &chi_ad, -1.0, Indices{index::m, index::l, index::e, index::a}, U_lm, Indices{index::m, index::l, index::e, index::d}, K_ldme_T);
@@ -1844,7 +1842,7 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             einsum(0.0, Indices{index::Q, index::l, index::e}, &chi_jk_temp, 1.0, Indices{index::Q, index::l, index::d}, q_ov_[ijk], Indices{index::d, index::e}, T_jk);
             
             Tensor<double, 3> chi_jk_temp_T("chi_jk_temp_T", naux_ijk, ntno_ijk, nlmo_ijk);
-            sort(Indices{index::Q, index::e, index::l}, &chi_jk_temp_T, Indices{index::Q, index::l, index::e}, chi_jk_temp);
+            permute(Indices{index::Q, index::e, index::l}, &chi_jk_temp_T, Indices{index::Q, index::l, index::e}, chi_jk_temp);
 
             einsum(1.0, Indices{index::l, index::m}, &chi_jk_list[idx], 1.0, Indices{index::Q, index::e, index::l}, chi_jk_temp_T, Indices{index::Q, index::e, index::m}, q_vo);
         }
@@ -1858,11 +1856,11 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             einsum(0.0, Indices{index::d, index::e, index::b, index::c}, &chi_dbec_temp, 1.0, Indices{index::l, index::m, index::d, index::e}, K_ldme_T, Indices{index::l, index::m, index::b, index::c}, T_lm);
         
             Tensor<double, 4> chi_dbec_temp_T("chi_dbec_temp_T", ntno_ijk, ntno_ijk, ntno_ijk, ntno_ijk);
-            sort(Indices{index::d, index::b, index::e, index::c}, &chi_dbec_temp_T, Indices{index::d, index::e, index::b, index::c}, chi_dbec_temp);
+            permute(Indices{index::d, index::b, index::e, index::c}, &chi_dbec_temp_T, Indices{index::d, index::e, index::b, index::c}, chi_dbec_temp);
             chi_dbec += chi_dbec_temp_T;
 
             // Rearrange chi_dbec
-            sort(Indices{index::d, index::e, index::b, index::c}, &chi_dbec_temp, Indices{index::d, index::b, index::e, index::c}, chi_dbec);
+            permute(Indices{index::d, index::e, index::b, index::c}, &chi_dbec_temp, Indices{index::d, index::b, index::e, index::c}, chi_dbec);
             chi_dbec = chi_dbec_temp;
         }
 
@@ -1953,19 +1951,19 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
                 Tensor<double, 2> chi_lida_temp = chi_lida_list[i_idx](l_ijk, All, All);
                 einsum(1.0, Indices{index::a, index::b, index::c}, &Vperms[idx], -1.0, Indices{index::d, index::a}, chi_lida_temp, Indices{index::d, index::b, index::c}, T_ljk);
                 Tensor<double, 3> Vperm_temp("Vperm_temp", ntno_ijk, ntno_ijk, ntno_ijk);
-                sort(Indices{index::b, index::a, index::c}, &Vperm_temp, Indices{index::a, index::b, index::c}, T_ljk);
+                permute(Indices{index::b, index::a, index::c}, &Vperm_temp, Indices{index::a, index::b, index::c}, T_ljk);
                 Tensor<double, 3> Vperm_temp2("Vperm_temp2", ntno_ijk, ntno_ijk, ntno_ijk);
                 einsum(0.0, Indices{index::b, index::a, index::c}, &Vperm_temp2, 1.0, Indices{index::d, index::b}, chi_lida_temp, Indices{index::d, index::a, index::c}, Vperm_temp);
-                sort(Indices{index::a, index::b, index::c}, &Vperm_temp, Indices{index::b, index::a, index::c}, Vperm_temp2);
+                permute(Indices{index::a, index::b, index::c}, &Vperm_temp, Indices{index::b, index::a, index::c}, Vperm_temp2);
                 Vperms[idx] -= Vperm_temp;
                 einsum(1.0, Indices{index::a, index::b, index::c}, &Vperms[idx], -1.0, Indices{index::d, index::c}, chi_lida_temp, Indices{index::a, index::b, index::d}, T_ljk);
 
                 // chi_ldai contributions
                 Tensor<double, 3> T_jlk("T_jlk", ntno_ijk, ntno_ijk, ntno_ijk);
-                sort(Indices{index::b, index::a, index::c}, &T_jlk, Indices{index::a, index::b, index::c}, T_ljk);
+                permute(Indices{index::b, index::a, index::c}, &T_jlk, Indices{index::a, index::b, index::c}, T_ljk);
 
                 Tensor<double, 3> T_kjl("T_kjl", ntno_ijk, ntno_ijk, ntno_ijk);
-                sort(Indices{index::c, index::b, index::a}, &T_kjl, Indices{index::a, index::b, index::c}, T_ljk);
+                permute(Indices{index::c, index::b, index::a}, &T_kjl, Indices{index::a, index::b, index::c}, T_ljk);
 
                 T_ljk *= 2.0;
                 T_ljk -= T_jlk;
@@ -2367,7 +2365,7 @@ double DLPNOCCSDT::compute_energy() {
     double t_cut_trace_triples = options_.get_double("T_CUT_TRACE_TRIPLES");
     double t_cut_energy_triples = options_.get_double("T_CUT_ENERGY_TRIPLES");
 
-    tno_transform(t_cut_tno_full, t_cut_trace_triples, t_cut_energy_triples);
+    tno_transform(t_cut_tno_full);
 
     double E_T0_new = compute_lccsd_t0(true);
     double E_T_new = lccsd_t_iterations();
@@ -2552,7 +2550,7 @@ Tensor<double, 4> DLPNOCCSDT_Q::matmul_4d(const Tensor<double, 4> &A, const Shar
     einsum(0.0, Indices{index::i, index::J, index::K, index::l}, &A_new2, 1.0, Indices{index::I, index::J, index::K, index::l}, A_new1, Indices{index::i, index::I}, Xview);
 
     Tensor<double, 4> A_new3("A_new3", dim_old, dim_new, dim_new, dim_old);
-    sort(Indices{index::J, index::i, index::l, index::K}, &A_new3, Indices{index::i, index::J, index::K, index::l}, A_new2);
+    permute(Indices{index::J, index::i, index::l, index::K}, &A_new3, Indices{index::i, index::J, index::K, index::l}, A_new2);
 
     Tensor<double, 4> A_new4("A_new4", dim_old, dim_new, dim_new, dim_new);
     einsum(0.0, Indices{index::J, index::i, index::l, index::k}, &A_new4, 1.0, Indices{index::J, index::i, index::l, index::K}, A_new3, Indices{index::k, index::K}, Xview);
@@ -2561,7 +2559,7 @@ Tensor<double, 4> DLPNOCCSDT_Q::matmul_4d(const Tensor<double, 4> &A, const Shar
     einsum(0.0, Indices{index::j, index::i, index::l, index::k}, &A_new5, 1.0, Indices{index::J, index::i, index::l, index::k}, A_new4, Indices{index::j, index::J}, Xview);
 
     Tensor<double, 4> A_new("A_new", dim_new, dim_new, dim_new, dim_new);
-    sort(Indices{index::i, index::j, index::k, index::l}, &A_new, Indices{index::j, index::i, index::l, index::k}, A_new5);
+    permute(Indices{index::i, index::j, index::k, index::l}, &A_new, Indices{index::j, index::i, index::l, index::k}, A_new5);
 
     return A_new;
 }
@@ -2571,51 +2569,51 @@ Tensor<double, 4> DLPNOCCSDT_Q::quadruples_permuter(const Tensor<double, 4>& X, 
     Tensor<double, 4> Xperm = X;
 
     if (i <= j && j <= l && l <= k) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::a, index::b, index::d, index::c}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::a, index::b, index::d, index::c}, X);
     } else if (i <= k && k <= j && j <= l) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::a, index::c, index::b, index::d}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::a, index::c, index::b, index::d}, X);
     } else if (i <= k && k <= l && l <= j) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::a, index::c, index::d, index::b}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::a, index::c, index::d, index::b}, X);
     } else if (i <= l && l <= j && j <= k) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::a, index::d, index::b, index::c}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::a, index::d, index::b, index::c}, X);
     } else if (i <= l && l <= k && k <= j) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::a, index::d, index::c, index::b}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::a, index::d, index::c, index::b}, X);
     } else if (j <= i && i <= k && k <= l) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::a, index::c, index::d}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::a, index::c, index::d}, X);
     } else if (j <= i && i <= l && l <= k) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::a, index::d, index::c}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::a, index::d, index::c}, X);
     } else if (j <= k && k <= i && i <= l) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::c, index::a, index::d}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::c, index::a, index::d}, X);
     } else if (j <= k && k <= l && l <= i) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::c, index::d, index::a}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::c, index::d, index::a}, X);
     } else if (j <= l && l <= i && i <= k) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::d, index::a, index::c}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::d, index::a, index::c}, X);
     } else if (j <= l && l <= k && k <= i) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::d, index::c, index::a}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::b, index::d, index::c, index::a}, X);
     } else if (k <= i && i <= j && j <= l) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::a, index::b, index::d}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::a, index::b, index::d}, X);
     } else if (k <= i && i <= l && l <= j) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::a, index::d, index::b}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::a, index::d, index::b}, X);
     } else if (k <= j && j <= i && i <= l) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::b, index::a, index::d}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::b, index::a, index::d}, X);
     } else if (k <= j && j <= l && l <= i) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::b, index::d, index::a}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::b, index::d, index::a}, X);
     } else if (k <= l && l <= i && i <= j) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::d, index::a, index::b}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::d, index::a, index::b}, X);
     } else if (k <= l && l <= j && j <= i) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::d, index::b, index::a}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::c, index::d, index::b, index::a}, X);
     } else if (l <= i && i <= j && j <= k) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::a, index::b, index::c}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::a, index::b, index::c}, X);
     } else if (l <= i && i <= k && k <= j) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::a, index::c, index::b}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::a, index::c, index::b}, X);
     } else if (l <= j && j <= i && i <= k) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::b, index::a, index::c}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::b, index::a, index::c}, X);
     } else if (l <= j && j <= k && k <= i) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::b, index::c, index::a}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::b, index::c, index::a}, X);
     } else if (l <= k && k <= i && i <= j) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::c, index::a, index::b}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::c, index::a, index::b}, X);
     } else if (l <= k && k <= j && j <= i) {
-        sort(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::c, index::b, index::a}, X);
+        permute(Indices{index::a, index::b, index::c, index::d}, &Xperm, Indices{index::d, index::c, index::b, index::a}, X);
     }
 
     return Xperm;
@@ -3467,21 +3465,21 @@ double DLPNOCCSDT_Q::compute_gamma_ijkl(bool store_amplitudes) {
                 Tensor<double, 3> gamma_3_temp("gamma_3_temp", nlmo_ijkl, nqno_ijkl, nqno_ijkl);
                 einsum(0.0, Indices{index::n, index::a, index::c}, &gamma_3_temp, 1.0, Indices{index::m, index::n}, K_minj_list[ij_idx], Indices{index::m, index::a, index::c}, T_mkac_list[k_idx]);
                 einsum(0.0, Indices{index::a, index::c, index::b, index::d}, &gamma_ijkl_buff_a, 1.0, Indices{index::n, index::a, index::c}, gamma_3_temp, Indices{index::n, index::b, index::d}, T_mkac_list[l_idx]);
-                sort(Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_buff_b, Indices{index::a, index::c, index::b, index::d}, gamma_ijkl_buff_a);
+                permute(Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_buff_b, Indices{index::a, index::c, index::b, index::d}, gamma_ijkl_buff_a);
                 gamma_ijkl_perm += gamma_ijkl_buff_b;
 
                 // Term 4
                 Tensor<double, 3> gamma_4_temp("gamma_4_temp", nqno_ijkl, nlmo_ijkl, nqno_ijkl);
                 einsum(0.0, Indices{index::a, index::m, index::b}, &gamma_4_temp, 1.0, Indices{index::a, index::m, index::e}, K_iame_list[i_idx], Indices{index::e, index::b}, T_ijab_list[kj_idx]);
                 Tensor<double, 3> gamma_4_temp_b("gamma_4_temp_b", nqno_ijkl, nqno_ijkl, nlmo_ijkl);
-                sort(Indices{index::a, index::b, index::m}, &gamma_4_temp_b, Indices{index::a, index::m, index::b}, gamma_4_temp);
+                permute(Indices{index::a, index::b, index::m}, &gamma_4_temp_b, Indices{index::a, index::m, index::b}, gamma_4_temp);
                 einsum(1.0, Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_perm, -2.0, Indices{index::a, index::b, index::m}, gamma_4_temp_b, Indices{index::m, index::c, index::d}, T_mkac_list[l_idx]);
 
                 // Term 5
                 Tensor<double, 3> gamma_5_temp("gamma_5_temp", nlmo_ijkl, nqno_ijkl, nqno_ijkl);
                 einsum(0.0, Indices{index::m, index::b, index::c}, &gamma_5_temp, 1.0, Indices{index::m, index::b, index::e}, K_mibe_list[i_idx], Indices{index::c, index::e}, T_ijab_list[kj_idx]);
                 einsum(0.0, Indices{index::a, index::d, index::b, index::c}, &gamma_ijkl_buff_a, 1.0, Indices{index::m, index::a, index::d}, T_mkac_list[l_idx], Indices{index::m, index::b, index::c}, gamma_5_temp);
-                sort(Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_buff_b, Indices{index::a, index::d, index::b, index::c}, gamma_ijkl_buff_a);
+                permute(Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_buff_b, Indices{index::a, index::d, index::b, index::c}, gamma_ijkl_buff_a);
                 gamma_ijkl_buff_b *= 2.0;
                 gamma_ijkl_perm -= gamma_ijkl_buff_b;
 
@@ -3489,11 +3487,11 @@ double DLPNOCCSDT_Q::compute_gamma_ijkl(bool store_amplitudes) {
                 einsum(1.0, Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_perm, 1.0, Indices{index::Q, index::a, index::b}, theta_Qab[ij_idx], Indices{index::Q, index::c, index::d}, theta_Qab[kl_idx]);
 
                 gamma_ijkl_list[ijkl_idx] = gamma_ijkl_perm;
-                sort(Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_buff_a, std::get<perm_idx>(einsum_indices), gamma_ijkl_perm);
+                permute(Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_buff_a, std::get<perm_idx>(einsum_indices), gamma_ijkl_perm);
                 gamma_ijkl += gamma_ijkl_buff_a;
             } else {
                 Tensor<double, 4> gamma_ijkl_buff_a("gamma_ijkl_buff_a", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
-                sort(Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_buff_a, std::get<perm_idx>(einsum_indices), gamma_ijkl_list[ijkl_idx]);
+                permute(Indices{index::a, index::b, index::c, index::d}, &gamma_ijkl_buff_a, std::get<perm_idx>(einsum_indices), gamma_ijkl_list[ijkl_idx]);
                 gamma_ijkl += gamma_ijkl_buff_a;
             }
         });
@@ -3637,22 +3635,22 @@ double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>
             // bar{t}_{ijkl}^{abcd} = -2t_{ijkl}^{abcd} - t_{ijkl}^{cdab} + t_{ijkl}^{bacd}
             Tensor<double, 4> T_bar = T_ijkl;
             T_bar *= -2.0;
-            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::c, index::d, index::a, index::b}, T_ijkl);
+            permute(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::c, index::d, index::a, index::b}, T_ijkl);
             T_bar -= T_buffer;
-            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::a, index::c, index::d}, T_ijkl);
+            permute(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::a, index::c, index::d}, T_ijkl);
             T_bar += T_buffer;
 
             // tilde{t}_{ijkl}^{abcd} = (1 + P_{kl}^{cd})[2t_{ijkl}^{dbac} - t_{ijkl}^{bdac}] =>
             // [2t_{ijkl}^{dbac} - t_{ijkl}^{bdac} + 2t_{ijlk}^{cbad} - t_{ijlk}^{bcad}] =>
             // 2t_{ijkl}^{dbac} - t_{ijkl}^{bdac} + 2t_{ijkl}^{cbda} - t_{ijkl}^{bcda}
-            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::d, index::b, index::a, index::c}, T_ijkl);
+            permute(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::d, index::b, index::a, index::c}, T_ijkl);
             Tensor<double, 4> T_tilde = T_buffer;
-            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::c, index::b, index::d, index::a}, T_ijkl);
+            permute(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::c, index::b, index::d, index::a}, T_ijkl);
             T_tilde += T_buffer;
             T_tilde *= 2.0;
-            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::d, index::a, index::c}, T_ijkl);
+            permute(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::d, index::a, index::c}, T_ijkl);
             T_tilde -= T_buffer;
-            sort(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::c, index::d, index::a}, T_ijkl);
+            permute(Indices{index::a, index::b, index::c, index::d}, &T_buffer, Indices{index::b, index::c, index::d, index::a}, T_ijkl);
             T_tilde -= T_buffer;
 
             // => alpha and beta contributions <= //
@@ -3660,9 +3658,9 @@ double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>
             // => 2 - P_{cd} contributions
 
             Tensor<double, 4> T_bar_dc("T_bar_dc", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
-            sort(Indices{index::a, index::b, index::d, index::c}, &T_bar_dc, Indices{index::a, index::b, index::c, index::d}, T_bar);
+            permute(Indices{index::a, index::b, index::d, index::c}, &T_bar_dc, Indices{index::a, index::b, index::c, index::d}, T_bar);
             Tensor<double, 4> T_tilde_dc("T_tilde_dc", nqno_ijkl, nqno_ijkl, nqno_ijkl, nqno_ijkl);
-            sort(Indices{index::a, index::b, index::d, index::c}, &T_tilde_dc, Indices{index::a, index::b, index::c, index::d}, T_tilde);
+            permute(Indices{index::a, index::b, index::d, index::c}, &T_tilde_dc, Indices{index::a, index::b, index::c, index::d}, T_tilde);
 
             Tensor<double, 2> alpha_ijm_buffer("alpha_ijm_buffer", nlmo_ijkl, nqno_ijkl);
             einsum(0.0, Indices{index::m, index::d}, &alpha_ijm_buffer, 2.0, Indices{index::m, index::a, index::b, index::c}, T_ijm_list[i_idx * FOUR + j_idx],
@@ -3677,9 +3675,9 @@ double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>
                     Indices{index::a, index::b, index::c, index::d}, T_tilde_dc);
 
             Tensor<double, 2> K_lk_T("K_lk_T", nlmo_ijkl, nqno_ijkl);
-            sort(Indices{index::m, index::d}, &K_lk_T, Indices{index::d, index::m}, K_iajm_list_[ijkl][l_idx * 4 + k_idx]);
+            permute(Indices{index::m, index::d}, &K_lk_T, Indices{index::d, index::m}, K_iajm_list_[ijkl][l_idx * 4 + k_idx]);
             Tensor<double, 2> K_kl_T("K_kl_T", nlmo_ijkl, nqno_ijkl);
-            sort(Indices{index::m, index::d}, &K_kl_T, Indices{index::d, index::m}, K_iajm_list_[ijkl][k_idx * 4 + l_idx]);
+            permute(Indices{index::m, index::d}, &K_kl_T, Indices{index::d, index::m}, K_iajm_list_[ijkl][k_idx * 4 + l_idx]);
 
             e_perm_energy[ijkl_idx] += 2.0 * (linear_algebra::dot(alpha_ijm_buffer, K_lk_T) + linear_algebra::dot(beta_ijm_buffer, K_kl_T));
 
@@ -3703,9 +3701,9 @@ double DLPNOCCSDT_Q::compute_quadruplet_energy(int ijkl, const Tensor<double, 4>
                     Indices{index::a, index::b, index::e}, T_ijl);
 
             Tensor<double, 3> g_kdce_T("g_kdce_T", nqno_ijkl, nqno_ijkl, nqno_ijkl);
-            sort(Indices{index::e, index::c, index::d}, &g_kdce_T, Indices{index::d, index::c, index::e}, K_iabe_list_[ijkl][k_idx]);
+            permute(Indices{index::e, index::c, index::d}, &g_kdce_T, Indices{index::d, index::c, index::e}, K_iabe_list_[ijkl][k_idx]);
             Tensor<double, 3> g_ldce_T("g_ldce_T", nqno_ijkl, nqno_ijkl, nqno_ijkl);
-            sort(Indices{index::e, index::c, index::d}, &g_ldce_T, Indices{index::d, index::c, index::e}, K_iabe_list_[ijkl][l_idx]);
+            permute(Indices{index::e, index::c, index::d}, &g_ldce_T, Indices{index::d, index::c, index::e}, K_iabe_list_[ijkl][l_idx]);
 
             e_perm_energy[ijkl_idx] += -4.0 * linear_algebra::dot(T_ijk_bar, g_ldce_T) + 2.0 * linear_algebra::dot(T_ijl_bar, g_kdce_T);
             e_perm_energy[ijkl_idx] += -4.0 * linear_algebra::dot(T_ijl_tilde, g_kdce_T) + 2.0 * linear_algebra::dot(T_ijk_tilde, g_ldce_T);
@@ -4074,8 +4072,8 @@ int read_options(std::string name, Options& options)
         // => Triples Options <= //
         options.add_double("T_CUT_TNO_LOOSE", 1.0e-6);
         options.add_double("T_CUT_TNO_FULL", 1.0e-7);
-        options.add_bool("DLPNO_CCSDT_DISK_OVERLAP", true);
-        options.add_bool("DLPNO_CCSDT_DISK_INTS", true);
+        options.add_bool("DLPNO_CCSDT_DISK_OVERLAP", false);
+        options.add_bool("DLPNO_CCSDT_DISK_INTS", false);
         options.add_bool("DLPNO_CCSDT_DISK_DIIS", false);
 
         // => Quadruples Options <= //
@@ -4103,7 +4101,7 @@ int read_options(std::string name, Options& options)
 extern "C" PSI_API
 SharedWavefunction dlpno_ccsdt_q(SharedWavefunction ref_wfn, Options& options) {
 
-    einsums::initialize();
+    einsums::profile::initialize();
 
     if (!options.get_bool("RUN_Q")) {
         auto dlpno_ccsdt_wfn = DLPNOCCSDT(ref_wfn, options);
@@ -4113,7 +4111,7 @@ SharedWavefunction dlpno_ccsdt_q(SharedWavefunction ref_wfn, Options& options) {
         dlpno_ccsdt_q_wfn.compute_energy();
     }
 
-    einsums::finalize(true);
+    einsums::profile::finalize();
 
     // Typically you would build a new wavefunction and populate it with data
     return ref_wfn;
