@@ -142,6 +142,8 @@ class DLPNOCCSDT : public DLPNOCCSD_T {
     bool disk_overlap_;
     // Write expensive integrals (q_{ijk}| m_{ijk} a_{ijk}) and (q_{ijk} | a_{ijk} b_{ijk}) to disk?
     bool disk_ints_;
+    // Damping ratio (how much of the original triples amplitude to keep)
+    double damping_ratio_;
 
     // Singles Amplitudes
     std::vector<Tensor<double, 2>> T_n_ijk_;
@@ -161,6 +163,11 @@ class DLPNOCCSDT : public DLPNOCCSD_T {
     double E_T0_loose_;
     // (T) energy using looser TNOs
     double E_T_loose_;
+
+    /// Encapsulates the reading in of (Q_{ijk}|m_{ijk} a_{ijk}) integrals (regardless of core or disk)
+    inline Tensor<double, 3> QIA_TNO(const int ijk);
+    /// Encapsulates the reading in of (Q_{ijk}|a_{ijk} b_{ijk}) integrals (regardless of core or disk)
+    inline Tensor<double, 3> QAB_TNO(const int ijk);
 
     /// Helper function for transforming amplitudes from one TNO space to another
     Tensor<double, 3> matmul_3d_einsums(const Tensor<double, 3> &A, const SharedMatrix &X, int dim_old, int dim_new);
@@ -292,8 +299,10 @@ void DLPNOCCSDT::estimate_memory() {
         K_ivov_memory += 3 * nlmo_ijk * ntno_ijk * ntno_ijk;
         K_ivvv_memory += 3 * ntno_ijk * ntno_ijk * ntno_ijk;
         qij_memory += 3 * naux_ijk * nlmo_ijk;
-        qia_memory += 3 * naux_ijk * nlmo_ijk * ntno_ijk;
-        qab_memory += naux_ijk * ntno_ijk * ntno_ijk;
+        if (!disk_ints_) {
+            qia_memory += 3 * naux_ijk * nlmo_ijk * ntno_ijk;
+            qab_memory += naux_ijk * ntno_ijk * ntno_ijk;
+        }
 
         S_tno_osv_small += ntno_ijk * (n_pno_[ii] + n_pno_[jj] + n_pno_[kk]);
         S_tno_pno_small += ntno_ijk * (n_pno_[ij] + n_pno_[jk] + n_pno_[ik]);
@@ -379,6 +388,12 @@ void DLPNOCCSDT::estimate_memory() {
     outfile->Printf("    S(a_{ijk}, a_{mli})            : %.3f [GiB]\n", S_tno_tno_large * pow(2.0, -30) * sizeof(double));
     outfile->Printf("    Total Memory Required          : %.3f [GiB]\n\n", total_memory * pow(2.0, -30) * sizeof(double));
 
+    if (!disk_ints_) {
+        outfile->Printf("    Keeping all LMO/TNO ERIs in core!\n\n");
+    } else {
+        outfile->Printf("    Writing expensive (Q_{ijk} | l_{ijk} a_{ijk}) and (Q_{ijk} | a_{ijk} b_{ijk}) integrals to disk!\n\n");
+    }
+
     if (!disk_overlap_) {
         outfile->Printf("    Keeping all PNO/TNO overlap matrices in core!\n\n");
     } else {
@@ -455,8 +470,13 @@ void DLPNOCCSDT::compute_integrals() {
         auto q_jv = std::make_shared<Matrix>("(Q_ijk | j b)", naux_ijk, npao_ijk);
         auto q_kv = std::make_shared<Matrix>("(Q_ijk | k c)", naux_ijk, npao_ijk);
 
-        auto q_ov = std::make_shared<Matrix>("(Q_ijk | m a)", naux_ijk, nlmo_ijk * ntno_ijk);
-        auto q_vv = std::make_shared<Matrix>("(Q_ijk | a b)", naux_ijk, ntno_ijk * ntno_ijk);
+        std::stringstream q_ov_name;
+        q_ov_name << "(Q_ijk | m a) " << (ijk);
+        std::stringstream q_vv_name;
+        q_vv_name << "(Q_ijk | a b) " << (ijk);
+
+        auto q_ov = std::make_shared<Matrix>(q_ov_name.str(), naux_ijk, nlmo_ijk * ntno_ijk);
+        auto q_vv = std::make_shared<Matrix>(q_vv_name.str(), naux_ijk, ntno_ijk * ntno_ijk);
 
         for (int q_ijk = 0; q_ijk < naux_ijk; q_ijk++) {
             const int q = lmotriplet_to_ribfs_[ijk][q_ijk];
@@ -533,8 +553,8 @@ void DLPNOCCSDT::compute_integrals() {
         q_jv_[ijk] = Tensor<double, 2>("(Q_ijk | j b)", naux_ijk, ntno_ijk);
         q_kv_[ijk] = Tensor<double, 2>("(Q_ijk | k c)", naux_ijk, ntno_ijk);
 
-        q_ov_[ijk] = Tensor<double, 3>("(Q_ijk | m a)", naux_ijk, nlmo_ijk, ntno_ijk);
-        q_vv_[ijk] = Tensor<double, 3>("(Q_ijk | a b)", naux_ijk, ntno_ijk, ntno_ijk);
+        q_ov_[ijk] = Tensor<double, 3>(q_ov->name(), naux_ijk, nlmo_ijk, ntno_ijk);
+        q_vv_[ijk] = Tensor<double, 3>(q_vv->name(), naux_ijk, ntno_ijk, ntno_ijk);
 
         ::memcpy(q_io_[ijk].data(), q_io->get_pointer(), naux_ijk * nlmo_ijk * sizeof(double));
         ::memcpy(q_jo_[ijk].data(), q_jo->get_pointer(), naux_ijk * nlmo_ijk * sizeof(double));
@@ -588,7 +608,61 @@ void DLPNOCCSDT::compute_integrals() {
                     Indices{index::Q, index::a, index::b}, q_vv_[ijk]);
         einsum(0.0, Indices{index::a, index::b, index::c}, &K_kvvv_[ijk], 1.0, Indices{index::Q, index::c}, q_kv_[ijk],
                     Indices{index::Q, index::a, index::b}, q_vv_[ijk]);
+
+        if (disk_ints_) {
+#pragma omp critical
+            q_ov->save(psio_.get(), PSIF_DLPNO_QIA_PNO, psi::Matrix::SubBlocks);
+
+#pragma omp critical
+            q_vv->save(psio_.get(), PSIF_DLPNO_QAB_PNO, psi::Matrix::ThreeIndexLowerTriangle);
+
+            q_ov_name << "(Q_ijk | m a) " << (ijk);
+            q_vv_name << "(Q_ijk | a b) " << (ijk);
+
+            q_ov_[ijk] = Tensor<double, 3>(q_ov->name(), 0, 0, 0);
+            q_vv_[ijk] = Tensor<double, 3>(q_vv->name(), 0, 0, 0);
+        }
     } // end ijk
+}
+
+
+inline Tensor<double, 3> DLPNOCCSDT::QIA_TNO(const int ijk) {
+    if (disk_ints_) {
+        int naux_ijk = lmotriplet_to_ribfs_[ijk].size();
+        int nlmo_ijk = lmotriplet_to_lmos_[ijk].size();
+        int ntno_ijk = n_tno_[ijk];
+
+        std::stringstream q_ov_name;
+        q_ov_name << "(Q_ijk | m a) " << (ijk);
+
+        auto q_ov = std::make_shared<Matrix>(q_ov_name.str(), naux_ijk, nlmo_ijk * ntno_ijk);
+#pragma omp critical
+        q_ov->load(psio_.get(), PSIF_DLPNO_QIA_PNO, psi::Matrix::SubBlocks);
+
+        q_ov_[ijk] = Tensor<double, 3>(q_ov->name(), naux_ijk, nlmo_ijk, ntno_ijk);
+        ::memcpy(q_ov_[ijk].data(), q_ov->get_pointer(), naux_ijk * nlmo_ijk * ntno_ijk * sizeof(double));
+    }
+
+    return q_ov_[ijk];
+}
+
+inline Tensor<double, 3> DLPNOCCSDT::QAB_TNO(const int ijk) {
+    if (disk_ints_) {
+        int naux_ijk = lmotriplet_to_ribfs_[ijk].size();
+        int ntno_ijk = n_tno_[ijk];
+
+        std::stringstream q_vv_name;
+        q_vv_name << "(Q_ijk | a b) " << (ijk);
+
+        auto q_vv = std::make_shared<Matrix>(q_vv_name.str(), naux_ijk, ntno_ijk * ntno_ijk);
+#pragma omp critical
+        q_vv->load(psio_.get(), PSIF_DLPNO_QAB_PNO, psi::Matrix::ThreeIndexLowerTriangle);
+
+        q_vv_[ijk] = Tensor<double, 3>(q_vv_[ijk].name(), naux_ijk, ntno_ijk, ntno_ijk);
+        ::memcpy(q_vv_[ijk].data(), q_vv->get_pointer(), naux_ijk * ntno_ijk * ntno_ijk * sizeof(double));
+    }
+
+    return q_vv_[ijk];
 }
 
 void DLPNOCCSDT::compute_tno_overlaps() {
@@ -1309,6 +1383,12 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
 
         R_ijk->zero();
 
+        // Read in integrals (if Disk I/O is done for integrals)
+        if (disk_ints_) {
+            q_ov_[ijk] = QIA_TNO(ijk);
+            q_vv_[ijk] = QAB_TNO(ijk);
+        }
+
         // => STEP 0: T1-dress DF integrals <= //
         auto i_ijk = std::find(lmotriplet_to_lmos_[ijk].begin(), lmotriplet_to_lmos_[ijk].end(), i) - lmotriplet_to_lmos_[ijk].begin();
         auto j_ijk = std::find(lmotriplet_to_lmos_[ijk].begin(), lmotriplet_to_lmos_[ijk].end(), j) - lmotriplet_to_lmos_[ijk].begin();
@@ -2015,6 +2095,11 @@ void DLPNOCCSDT::compute_R_iajbkc(std::vector<SharedMatrix>& R_iajbkc) {
             } // end l_ijk
         } // end idx
 
+        if (disk_ints_) {
+            q_ov_[ijk] = Tensor<double, 3>(q_ov_[ijk].name(), 0, 0, 0);
+            q_vv_[ijk] = Tensor<double, 3>(q_vv_[ijk].name(), 0, 0, 0);
+        }
+
         if (disk_overlap_) {
             S_ijk_mli_[ijk].clear();
             S_ijk_mlj_[ijk].clear();
@@ -2241,7 +2326,7 @@ void DLPNOCCSDT::lccsdt_iterations() {
             for (int a_ijk = 0; a_ijk < n_tno_[ijk]; ++a_ijk) {
                 for (int b_ijk = 0; b_ijk < n_tno_[ijk]; ++b_ijk) {
                     for (int c_ijk = 0; c_ijk < n_tno_[ijk]; ++c_ijk) {
-                        (*T_iajbkc_[ijk])(a_ijk, b_ijk * n_tno_[ijk] + c_ijk) -= (*R_iajbkc[ijk])(a_ijk, b_ijk * n_tno_[ijk] + c_ijk) /
+                        (*T_iajbkc_[ijk])(a_ijk, b_ijk * n_tno_[ijk] + c_ijk) -= (1.0 - damping_ratio_) * (*R_iajbkc[ijk])(a_ijk, b_ijk * n_tno_[ijk] + c_ijk) /
                                             (e_tno_[ijk]->get(a_ijk) + e_tno_[ijk]->get(b_ijk) + e_tno_[ijk]->get(c_ijk) - F_lmo_->get(i,i) - F_lmo_->get(j,j) - F_lmo_->get(k,k));
                     }
                 }
@@ -2348,6 +2433,16 @@ double DLPNOCCSDT::compute_energy() {
 
     disk_overlap_ = options_.get_bool("DLPNO_CCSDT_DISK_OVERLAP");
     disk_ints_ = options_.get_bool("DLPNO_CCSDT_DISK_INTS");
+    damping_ratio_ = options_.get_double("TRIPLES_DAMPING_RATIO");
+
+    if (disk_overlap_) {
+        psio_->open(PSIF_DLPNO_TRIPLES, 0);
+    }
+
+    if (disk_ints_) {
+        psio_->open(PSIF_DLPNO_QIA_PNO, 0);
+        psio_->open(PSIF_DLPNO_QAB_PNO, 0);
+    }
 
     // Run DLPNO-CCSD(T) as initial step
     double E_DLPNO_CCSD_T = DLPNOCCSD_T::compute_energy();
@@ -2416,7 +2511,7 @@ double DLPNOCCSDT::compute_energy() {
 
     timer_off("DLPNO-CCSDT");
 
-    dE_T_rank_ = 0.0; // (e_lccsd_t_ - e_lccsd_ - E_T_);
+    dE_T_rank_ = de_lccsd_t_screened_;
     outfile->Printf("\n  * (T) TNO rank correction: %16.12f\n\n", dE_T_rank_);
 
     double e_scf = variables_["SCF TOTAL ENERGY"];
@@ -2429,6 +2524,15 @@ double DLPNOCCSDT::compute_energy() {
     set_scalar_variable("CURRENT ENERGY", e_ccsdt_total);
 
     print_results();
+
+    if (disk_overlap_) {
+        psio_->close(PSIF_DLPNO_TRIPLES, 1);
+    }
+
+    if (disk_ints_) {
+        psio_->close(PSIF_DLPNO_QIA_PNO, 1);
+        psio_->close(PSIF_DLPNO_QAB_PNO, 1);
+    }
 
     return e_ccsdt_total;
 }
@@ -4072,6 +4176,7 @@ int read_options(std::string name, Options& options)
         options.add_bool("DLPNO_CC3", false);
 
         // => Triples Options <= //
+        options.add_double("TRIPLES_DAMPING_RATIO", 0.2);
         options.add_double("T_CUT_TNO_LOOSE", 1.0e-6);
         options.add_double("T_CUT_TNO_FULL", 1.0e-7);
         options.add_bool("DLPNO_CCSDT_DISK_OVERLAP", true);
